@@ -7,9 +7,9 @@ import { registerResource } from '../crud.js';
  * Project the agent's central `agent_destinations` rows into every active
  * session's `inbound.db`. The agent-to-agent module is optional, so we guard
  * on `hasTable('agent_destinations')` and load `writeDestinations` lazily —
- * same pattern as container-runner.ts on container wake.
+ * same pattern as runner-manager.ts on runner wake.
  *
- * Called from both `add` and `remove` so the live container picks up the
+ * Called from both `add` and `remove` so the live runner picks up the
  * change without waiting for the next spawn. Without this, send_message to
  * the new local_name silently drops with "unknown destination" until restart.
  * See the destination-projection invariant in

@@ -15,7 +15,7 @@
  *   - Lives in src/modules/ for signaling (not really core), but ships
  *     on main and is imported directly by core. No registry, no hook.
  *   - Removing requires editing src/router.ts, src/delivery.ts, and
- *     src/container-runner.ts to drop the calls.
+ *     src/runner-manager.ts to drop the calls.
  */
 import fs from 'fs';
 
@@ -24,7 +24,7 @@ import { heartbeatPath } from '../../session-manager.js';
 const TYPING_REFRESH_MS = 4000;
 /**
  * Grace window from startTypingRefresh: fire typing unconditionally
- * for this long regardless of heartbeat state. Covers container
+ * for this long regardless of heartbeat state. Covers runner
  * spawn/wake latency (5–12s on cold start before first heartbeat).
  */
 const TYPING_GRACE_MS = 15000;
@@ -101,7 +101,7 @@ export function startTypingRefresh(
   if (existing) {
     // Already refreshing. Fire an immediate tick for the new inbound
     // event and reset the grace window — the new message restarts
-    // the container-wake latency budget. Also clear any lingering
+    // the runner-wake latency budget. Also clear any lingering
     // post-delivery pause: a new inbound means the user expects
     // typing to show immediately.
     triggerTyping(channelType, platformId, threadId).catch(() => {});

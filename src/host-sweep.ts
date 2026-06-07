@@ -2,7 +2,7 @@
  * Host sweep — periodic maintenance of all session DBs.
  *
  * Two-DB architecture:
- *   - Reads processing_ack + container_state from outbound.db
+ *   - Reads processing_ack + runner_state from outbound.db
  *   - Writes to inbound.db (host-owned) for status updates + recurrence
  *   - Uses heartbeat file mtime for liveness (never polls DB for it)
  *   - Never writes to outbound.db — preserves single-writer-per-file invariant
@@ -10,11 +10,11 @@
  * Stuck / idle detection (replaces the old IDLE_TIMEOUT setTimeout + 10-min
  * heartbeat threshold):
  *
- *   If the container isn't running and there are 'processing' rows left over
+ *   If the runner isn't running and there are 'processing' rows left over
  *   (e.g. it crashed mid-turn) → reset them to pending with backoff +
  *   tries++. Existing retry machinery does the rest.
  *
- *   If the container IS running:
+ *   If the runner IS running:
  *     1. Absolute ceiling: heartbeat age > max(30 min, current_bash_timeout)
  *        → kill. Covers the "alive but silent for 30 min" case. Extended
  *        only while Bash is declared as running longer, honouring the
@@ -23,7 +23,7 @@
  *     2. Message-scoped stuck: for each 'processing' row, tolerance =
  *        max(60s, current_bash_timeout_ms_if_Bash_running). If
  *        (claim_age > tolerance) AND (heartbeat_mtime <= status_changed)
- *        → kill + reset this message + tries++. Semantics: "container
+ *        → kill + reset this message + tries++. Semantics: "runner
  *        claimed a message and went quiet past tolerance since the claim."
  */
 import type Database from 'better-sqlite3';
@@ -34,17 +34,17 @@ import { getAgentGroup } from './db/agent-groups.js';
 import {
   countDueMessages,
   deleteOrphanProcessingClaims,
-  getContainerState,
+  getRunnerState,
   getMessageForRetry,
   getProcessingClaims,
   markMessageFailed,
   retryWithBackoff,
   syncProcessingAcks,
-  type ContainerState,
+  type RunnerState,
 } from './db/session-db.js';
 import { log } from './log.js';
 import { openInboundDb, openOutboundDb, openOutboundDbRw, inboundDbPath, heartbeatPath } from './session-manager.js';
-import { isContainerRunning, killContainer, wakeContainer } from './container-runner.js';
+import { isRunnerRunning, killRunner, wakeRunner } from './runner-manager.js';
 import type { Session } from './types.js';
 
 /**
@@ -59,8 +59,8 @@ export function parseSqliteUtc(s: string): number {
 }
 
 const SWEEP_INTERVAL_MS = 60_000;
-// Absolute idle ceiling for a running container. If the heartbeat file hasn't
-// been touched in this long, the container is either stuck or doing genuinely
+// Absolute idle ceiling for a running runner. If the heartbeat file hasn't
+// been touched in this long, the runner is either stuck or doing genuinely
 // nothing — kill and restart on the next inbound.
 export const ABSOLUTE_CEILING_MS = 30 * 60 * 1000;
 // Stuck tolerance window applied per 'processing' claim — "did we see any
@@ -75,25 +75,25 @@ export type StuckDecision =
   | { action: 'kill-claim'; messageId: string; claimAgeMs: number; toleranceMs: number };
 
 /**
- * Pure decision for whether a running container should be killed this sweep
+ * Pure decision for whether a running runner should be killed this sweep
  * tick. Inputs are all deterministic; filesystem + DB reads happen in the
  * caller.
  */
 export function decideStuckAction(args: {
   now: number;
   heartbeatMtimeMs: number; // 0 when heartbeat file absent
-  containerState: ContainerState | null;
+  runnerState: RunnerState | null;
   claims: Array<{ message_id: string; status_changed: string }>;
 }): StuckDecision {
-  const { now, heartbeatMtimeMs, containerState, claims } = args;
-  const declaredBashMs = bashTimeoutMs(containerState);
+  const { now, heartbeatMtimeMs, runnerState, claims } = args;
+  const declaredBashMs = bashTimeoutMs(runnerState);
 
   // Ceiling check only applies when we have an actual heartbeat timestamp.
-  // A freshly-spawned container hasn't had any SDK activity yet so no
+  // A freshly-spawned runner hasn't had any SDK activity yet so no
   // heartbeat file exists — if we treated that as infinitely stale we'd
-  // kill every container within seconds of spawn. Genuinely-dead containers
-  // that never wrote a heartbeat are caught by the separate "container
-  // process not running" cleanup path, not here. If a fresh container is
+  // kill every runner within seconds of spawn. Genuinely-dead runners
+  // that never wrote a heartbeat are caught by the separate "runner
+  // process not running" cleanup path, not here. If a fresh runner is
   // hanging at the gate (claimed a message but never did anything) the
   // claim-stuck check below handles it.
   if (heartbeatMtimeMs !== 0) {
@@ -162,7 +162,7 @@ async function sweepSession(session: Session): Promise<void> {
   try {
     outDb = openOutboundDb(agentGroup.id, session.id);
   } catch {
-    // outbound.db might not exist yet (container hasn't started)
+    // outbound.db might not exist yet (runner hasn't started)
   }
 
   try {
@@ -171,33 +171,33 @@ async function sweepSession(session: Session): Promise<void> {
       syncProcessingAcks(inDb, outDb);
     }
 
-    // 2. Wake a container if work is due and nothing is running. Ordered
-    // before the crashed-container cleanup so a fresh container gets a chance
+    // 2. Wake a runner if work is due and nothing is running. Ordered
+    // before the crashed-runner cleanup so a fresh runner gets a chance
     // to clean its own orphan processing_ack rows on startup (see
-    // container/agent-runner/src/db/connection.ts). Otherwise the reset path
+    // runner/agent-runner/src/db/connection.ts). Otherwise the reset path
     // would keep bumping process_after into the future, dueCount would stay 0,
     // and the wake would never fire.
     const dueCount = countDueMessages(inDb);
-    if (dueCount > 0 && !isContainerRunning(session.id)) {
-      log.info('Waking container for due messages', { sessionId: session.id, count: dueCount });
-      // wakeContainer never throws — transient spawn failures (OneCLI down,
+    if (dueCount > 0 && !isRunnerRunning(session.id)) {
+      log.info('Waking runner for due messages', { sessionId: session.id, count: dueCount });
+      // wakeRunner never throws — transient spawn failures (OneCLI down,
       // etc.) return false and leave messages pending for the next tick.
-      await wakeContainer(session);
+      await wakeRunner(session);
     }
 
-    const alive = isContainerRunning(session.id);
+    const alive = isRunnerRunning(session.id);
 
-    // 3. Running-container SLA: absolute ceiling + per-claim stuck rules.
+    // 3. Running-runner SLA: absolute ceiling + per-claim stuck rules.
     if (alive && outDb) {
-      enforceRunningContainerSla(inDb, outDb, session, agentGroup.id);
+      enforceRunningRunnerSla(inDb, outDb, session, agentGroup.id);
     }
 
-    // 4. Crashed-container cleanup: processing rows left behind get retried.
+    // 4. Crashed-runner cleanup: processing rows left behind get retried.
     // Only fires when wake in step 2 didn't pick up the work (no due messages,
     // or wake failed). resetStuckProcessingRows itself is idempotent — it
     // skips messages already scheduled for a future retry.
     if (!alive && outDb) {
-      resetStuckProcessingRows(inDb, outDb, session, 'container not running');
+      resetStuckProcessingRows(inDb, outDb, session, 'runner not running');
     }
 
     // 5. Recurrence fanout for completed recurring tasks.
@@ -220,12 +220,12 @@ function heartbeatMtimeMs(agentGroupId: string, sessionId: string): number {
   }
 }
 
-function bashTimeoutMs(state: ContainerState | null): number | null {
+function bashTimeoutMs(state: RunnerState | null): number | null {
   if (!state || state.current_tool !== 'Bash') return null;
   return typeof state.tool_declared_timeout_ms === 'number' ? state.tool_declared_timeout_ms : null;
 }
 
-function enforceRunningContainerSla(
+function enforceRunningRunnerSla(
   inDb: Database.Database,
   outDb: Database.Database,
   session: Session,
@@ -234,30 +234,30 @@ function enforceRunningContainerSla(
   const decision = decideStuckAction({
     now: Date.now(),
     heartbeatMtimeMs: heartbeatMtimeMs(agentGroupId, session.id),
-    containerState: getContainerState(outDb),
+    runnerState: getRunnerState(outDb),
     claims: getProcessingClaims(outDb),
   });
 
   if (decision.action === 'ok') return;
 
   if (decision.action === 'kill-ceiling') {
-    log.warn('Killing container past absolute ceiling', {
+    log.warn('Killing runner past absolute ceiling', {
       sessionId: session.id,
       heartbeatAgeMs: decision.heartbeatAgeMs,
       ceilingMs: decision.ceilingMs,
     });
-    killContainer(session.id, 'absolute-ceiling');
+    killRunner(session.id, 'absolute-ceiling');
     resetStuckProcessingRows(inDb, outDb, session, 'absolute-ceiling');
     return;
   }
 
-  log.warn('Killing container — message claimed then silent', {
+  log.warn('Killing runner — message claimed then silent', {
     sessionId: session.id,
     messageId: decision.messageId,
     claimAgeMs: decision.claimAgeMs,
     toleranceMs: decision.toleranceMs,
   });
-  killContainer(session.id, 'claim-stuck');
+  killRunner(session.id, 'claim-stuck');
   resetStuckProcessingRows(inDb, outDb, session, 'claim-stuck');
 }
 
@@ -285,7 +285,7 @@ function resetStuckProcessingRows(
 
     // Already rescheduled for a future retry — don't bump tries again. The
     // wake path (sweep step 2) will fire when process_after elapses and a
-    // fresh container will clean the orphan claim on startup.
+    // fresh runner will clean the orphan claim on startup.
     if (msg.processAfter && parseSqliteUtc(msg.processAfter) > now) continue;
 
     if (msg.tries >= MAX_TRIES) {
@@ -310,7 +310,7 @@ function resetStuckProcessingRows(
 
   // Drop the orphan 'processing' rows. Without this, the next sweep tick
   // would re-read them, see the old status_changed timestamp, conclude the
-  // freshly respawned container is stuck, and SIGKILL it before its
+  // freshly respawned runner is stuck, and SIGKILL it before its
   // agent-runner has a chance to run clearStaleProcessingAcks() on startup.
   const ownsDb = !writableOutDb;
   let useDb: Database.Database | null = writableOutDb ?? null;

@@ -287,7 +287,6 @@ export function createNewAgentGroup(name: string): AgentGroup {
     id: agId,
     name,
     folder,
-    agent_provider: null,
     created_at: new Date().toISOString(),
   });
 

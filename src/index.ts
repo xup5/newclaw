@@ -1,18 +1,16 @@
 /**
- * NanoClaw — main entry point.
+ * NewClaw — main entry point.
  *
  * Thin orchestrator: init DB, run migrations, start channel adapters,
  * start delivery polls, start sweep, handle shutdown.
  */
 import path from 'path';
 
-import { backfillContainerConfigs } from './backfill-container-configs.js';
 import { DATA_DIR } from './config.js';
 import { enforceStartupBackoff, resetCircuitBreaker } from './circuit-breaker.js';
-import { migrateGroupsToClaudeLocal } from './claude-md-compose.js';
+import { migrateGroupsToAgentsLocal } from './agents-md-compose.js';
 import { initDb } from './db/connection.js';
 import { runMigrations } from './db/migrations/index.js';
-import { ensureContainerRuntimeRunning, cleanupOrphans } from './container-runtime.js';
 import { startActiveDeliveryPoll, startSweepDeliveryPoll, setDeliveryAdapter, stopDeliveryPolls } from './delivery.js';
 import { startHostSweep, stopHostSweep } from './host-sweep.js';
 import { routeInbound } from './router.js';
@@ -50,8 +48,7 @@ async function dispatchResponse(payload: ResponsePayload): Promise<void> {
 // Channel skills uncomment lines in channels/index.ts to enable them.
 import './channels/index.js';
 
-// Modules barrel — default modules (typing, mount-security) ship here; skills
-// append registry-based modules. Imported for side effects (registrations).
+// Modules barrel. Imported for side effects (registrations).
 import './modules/index.js';
 
 // CLI command barrel — populates the `ncl` registry before the CLI server
@@ -64,7 +61,7 @@ import type { ChannelAdapter, ChannelSetup } from './channels/adapter.js';
 import { initChannelAdapters, teardownChannelAdapters, getChannelAdapter } from './channels/channel-registry.js';
 
 async function main(): Promise<void> {
-  log.info('NanoClaw starting');
+  log.info('NewClaw starting');
 
   // 0. Circuit breaker — backoff on rapid restarts
   await enforceStartupBackoff();
@@ -75,23 +72,10 @@ async function main(): Promise<void> {
   runMigrations(db);
   log.info('Central DB ready', { path: dbPath });
 
-  // 1b. Backfill container_configs from legacy container.json files.
-  // Idempotent — skips groups that already have a config row.
-  backfillContainerConfigs();
+  // 1b. One-time filesystem cutover — idempotent, no-op after first run.
+  migrateGroupsToAgentsLocal();
 
-  // 1c. One-time filesystem cutover — idempotent, no-op after first run.
-  migrateGroupsToClaudeLocal();
-
-  // 2. Optional Docker runtime cleanup. Host mode is the default; Docker is
-  // only required for groups that explicitly set runtime=docker.
-  try {
-    ensureContainerRuntimeRunning();
-    cleanupOrphans();
-  } catch {
-    log.info('Docker runtime unavailable; continuing with host-mode runners');
-  }
-
-  // 3. Channel adapters
+  // 2. Channel adapters
   await initChannelAdapters((adapter: ChannelAdapter): ChannelSetup => {
     return {
       onInbound(platformId, threadId, message) {
@@ -146,7 +130,7 @@ async function main(): Promise<void> {
     };
   });
 
-  // 4. Delivery adapter bridge — dispatches to channel adapters
+  // 3. Delivery adapter bridge — dispatches to channel adapters
   const deliveryAdapter = {
     async deliver(
       channelType: string,
@@ -170,19 +154,19 @@ async function main(): Promise<void> {
   };
   setDeliveryAdapter(deliveryAdapter);
 
-  // 5. Start delivery polls
+  // 4. Start delivery polls
   startActiveDeliveryPoll();
   startSweepDeliveryPoll();
   log.info('Delivery polls started');
 
-  // 6. Start host sweep
+  // 5. Start host sweep
   startHostSweep();
   log.info('Host sweep started');
 
-  // 7. Start the `ncl` CLI socket server (data/ncl.sock).
+  // 6. Start the `ncl` CLI socket server (data/ncl.sock).
   await startCliServer();
 
-  log.info('NanoClaw running');
+  log.info('NewClaw running');
 }
 
 /** Graceful shutdown. */

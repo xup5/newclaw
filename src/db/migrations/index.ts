@@ -10,7 +10,7 @@ import { migration010 } from './010-engage-modes.js';
 import { migration011 } from './011-pending-sender-approvals.js';
 import { migration012 } from './012-channel-registration.js';
 import { migration013 } from './013-approval-render-metadata.js';
-import { migration014 } from './014-container-configs.js';
+import { migration014 } from './014-agent-configs.js';
 import { migration015 } from './015-cli-scope.js';
 import { migration016 } from './016-runner-runtime.js';
 import { moduleApprovalsPendingApprovals } from './module-approvals-pending-approvals.js';

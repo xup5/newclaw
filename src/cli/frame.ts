@@ -1,6 +1,6 @@
 /**
  * Wire format shared between the socket transport (host caller) and — when
- * it lands — the DB transport (container agent caller).
+ * it lands — the DB transport (runner agent caller).
  *
  * Same JSON whether it goes over a socket as a line or sits in a
  * `frame_json TEXT` column on a session DB. Caller identity is NOT carried

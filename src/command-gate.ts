@@ -1,8 +1,8 @@
 /**
  * Host-side command gate. Classifies inbound slash commands and gates
- * them before they reach the container.
+ * them before they reach the runner.
  *
- * - Filtered commands: dropped silently (never reach the container)
+ * - Filtered commands: dropped silently (never reach the runner)
  * - Admin commands: checked against user_roles; denied senders get a
  *   "Permission denied" response written directly to messages_out
  * - Normal messages: pass through unchanged
@@ -15,7 +15,7 @@ const FILTERED_COMMANDS = new Set(['/help', '/login', '/logout', '/doctor', '/co
 const ADMIN_COMMANDS = new Set(['/clear', '/compact', '/context', '/cost', '/files', '/upload-trace']);
 
 /**
- * Classify a message and decide whether it should reach the container.
+ * Classify a message and decide whether it should reach the runner.
  * Returns 'pass' for normal messages and authorized admin commands,
  * 'filter' for silently-dropped commands, 'deny' for unauthorized
  * admin commands.

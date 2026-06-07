@@ -12,19 +12,19 @@
  * ⚠️  DESTINATION PROJECTION INVARIANT — READ BEFORE ADDING NEW CALL SITES.
  *
  * `agent_destinations` in the central DB is the source of truth, but the
- * agent-runner container reads its destinations from a per-session
+ * agent-runner runner reads its destinations from a per-session
  * projection in `inbound.db`. That projection is written by
  * `writeDestinations(agentGroupId, sessionId)` in session-manager.ts.
  *
- * `spawnContainer` calls `writeDestinations` on every container wake, so a
- * fresh container always sees the latest destinations. BUT: a container
+ * `spawnRunner` calls `writeDestinations` on every runner wake, so a
+ * fresh runner always sees the latest destinations. BUT: a runner
  * that is ALREADY running when you mutate the central table will keep
  * serving the stale projection until its next wake — the central write
  * does not propagate automatically.
  *
  * **Therefore: every time you call `createDestination` / `deleteDestination` /
  * `deleteAllDestinationsTouching` from code that runs while an agent's
- * container may be alive, you MUST also call `writeDestinations(agentGroupId,
+ * runner may be alive, you MUST also call `writeDestinations(agentGroupId,
  * sessionId)` for each affected session.** Forgetting this manifests as
  * "dropped: unknown destination" errors at send_message time.
  *
@@ -41,7 +41,7 @@ import { getDb } from '../../../db/connection.js';
  * ⚠️  Caller responsibility: after this returns, call
  * `writeDestinations(row.agent_group_id, <sessionId>)` for each active
  * session of that agent group so the change propagates to the running
- * container's inbound.db. See the top-of-file invariant.
+ * runner's inbound.db. See the top-of-file invariant.
  */
 export function createDestination(row: AgentDestination): void {
   getDb()
@@ -86,7 +86,7 @@ export function hasDestination(agentGroupId: string, targetType: 'channel' | 'ag
 /**
  * ⚠️  Caller responsibility: after this returns, call
  * `writeDestinations(agentGroupId, <sessionId>)` for each active session
- * so the deletion propagates to the running container's inbound.db.
+ * so the deletion propagates to the running runner's inbound.db.
  */
 export function deleteDestination(agentGroupId: string, localName: string): void {
   getDb()

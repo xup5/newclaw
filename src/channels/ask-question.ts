@@ -1,7 +1,7 @@
 /**
  * Shared ask_question payload schema + normalization.
  *
- * Producers (host-side approvals, container-side ask_user_question MCP tool)
+ * Producers (host-side approvals, runner-side ask_user_question MCP tool)
  * emit an `ask_question` payload. Options may be bare strings for ergonomics,
  * but are normalized here into a consistent shape before delivery, persistence,
  * and rendering.

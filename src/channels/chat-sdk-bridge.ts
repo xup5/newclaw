@@ -1,6 +1,6 @@
 /**
  * Chat SDK bridge — wraps a Chat SDK adapter + Chat instance
- * to conform to the NanoClaw ChannelAdapter interface.
+ * to conform to the NewClaw ChannelAdapter interface.
  *
  * Used by Discord, Slack, and other Chat SDK-supported platforms.
  */
@@ -216,7 +216,7 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
 
       chat = new Chat({
         adapters: { [adapter.name]: adapter },
-        userName: adapter.userName || 'NanoClaw',
+        userName: adapter.userName || 'NewClaw',
         concurrency: config.concurrency ?? 'concurrent',
         state,
         logger: 'silent',
@@ -666,7 +666,7 @@ async function handleForwardedEvent(
           ephemeral = response.ephemeral ?? true;
         } catch (err) {
           log.error('Application command handler failed', { name, err });
-          text = 'NanoClaw failed to handle that command. Check the host logs.';
+          text = 'NewClaw failed to handle that command. Check the host logs.';
         }
 
         await fetch(`https://discord.com/api/v10/interactions/${interactionId}/${interactionToken}/callback`, {

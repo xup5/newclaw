@@ -5,13 +5,14 @@
 import { createDiscordAdapter } from '@chat-adapter/discord';
 import { REST, Routes, SlashCommandBuilder } from 'discord.js';
 
-import { restartAgentGroupContainers } from '../container-restart.js';
 import { getAgentGroup } from '../db/agent-groups.js';
 import { getDb, hasTable } from '../db/connection.js';
-import { getContainerConfig, updateContainerConfigScalars } from '../db/container-configs.js';
+import { getAgentConfig, updateAgentConfigScalars } from '../db/agent-configs.js';
 import { getMessagingGroupAgents, getMessagingGroupByPlatform } from '../db/messaging-groups.js';
+import { getSessionsByAgentGroup } from '../db/sessions.js';
 import { readEnvFile } from '../env.js';
 import { log } from '../log.js';
+import { killRunner } from '../runner-manager.js';
 import { setVerboseModeForPlatform, type VerboseLevel } from '../verbose-mode.js';
 import { createChatSdkBridge, type ReplyContext } from './chat-sdk-bridge.js';
 import { registerChannelAdapter } from './channel-registry.js';
@@ -51,7 +52,7 @@ async function registerDiscordCommands(botToken: string, applicationId?: string)
 
   const verbose = new SlashCommandBuilder()
     .setName('verbose')
-    .setDescription('Control NanoClaw progress narration for this channel')
+    .setDescription('Control NewClaw progress narration for this channel')
     .addStringOption((option) =>
       option
         .setName('mode')
@@ -118,25 +119,24 @@ async function handleCodexCommand(ctx: {
 }): Promise<{ text: string; ephemeral: true }> {
   const mg = getMessagingGroupByPlatform('discord', ctx.platformId);
   if (!mg) {
-    return { text: 'This Discord channel or thread is not registered with NanoClaw yet.', ephemeral: true };
+    return { text: 'This Discord channel or thread is not registered with NewClaw yet.', ephemeral: true };
   }
 
   const wiring = getMessagingGroupAgents(mg.id)[0];
   if (!wiring) {
-    return { text: 'This Discord channel is registered but has no NanoClaw agent wired to it.', ephemeral: true };
+    return { text: 'This Discord channel is registered but has no NewClaw agent wired to it.', ephemeral: true };
   }
 
   if (!isDiscordAdmin(ctx.userId, wiring.agent_group_id)) {
-    return { text: 'Only NanoClaw owners and admins can change Codex settings for this agent.', ephemeral: true };
+    return { text: 'Only NewClaw owners and admins can change Codex settings for this agent.', ephemeral: true };
   }
 
-  const group = getAgentGroup(wiring.agent_group_id);
-  const config = getContainerConfig(wiring.agent_group_id);
+  const config = getAgentConfig(wiring.agent_group_id);
   if (!config) {
-    return { text: `No container config found for agent group ${wiring.agent_group_id}.`, ephemeral: true };
+    return { text: `No agent config found for agent group ${wiring.agent_group_id}.`, ephemeral: true };
   }
 
-  const provider = config.provider ?? group?.agent_provider ?? 'codex';
+  const provider = config.provider ?? 'codex';
   if (provider !== 'codex') {
     return {
       text: `This agent is currently using provider "${provider}". /codex only controls Codex-backed agents.`,
@@ -147,6 +147,7 @@ async function handleCodexCommand(ctx: {
   const model = ctx.options.model?.trim();
   const effort = ctx.options.effort?.trim().toLowerCase();
   const updates: { model?: string; effort?: string } = {};
+  const group = getAgentGroup(wiring.agent_group_id);
 
   if (model) updates.model = model;
   if (effort) {
@@ -167,12 +168,11 @@ async function handleCodexCommand(ctx: {
     };
   }
 
-  updateContainerConfigScalars(wiring.agent_group_id, updates);
-  const restarted = restartAgentGroupContainers(
-    wiring.agent_group_id,
-    'Discord /codex settings update',
-    'Codex settings were updated by a Discord admin. Continue with the new model and reasoning effort.',
-  );
+  updateAgentConfigScalars(wiring.agent_group_id, updates);
+  const restarted = getSessionsByAgentGroup(wiring.agent_group_id).reduce((count, session) => {
+    killRunner(session.id, 'Discord /codex settings update');
+    return count + 1;
+  }, 0);
 
   const nextModel = updates.model ?? config.model ?? '(default)';
   const nextEffort = updates.effort ?? config.effort ?? '(default)';

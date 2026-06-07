@@ -5,14 +5,13 @@
  */
 
 export const SCHEMA = `
--- Agent workspaces: folder, skills, CLAUDE.md.
+-- Agent workspaces: folder, skills, AGENTS.md.
 -- All workspaces are equal; privilege lives on users, not groups.
--- Container config lives in the container_configs table (see migration 014).
+-- Runner config lives in the agent_configs table (see migration 014).
 CREATE TABLE agent_groups (
   id               TEXT PRIMARY KEY,
   name             TEXT NOT NULL,
   folder           TEXT NOT NULL UNIQUE,
-  agent_provider   TEXT,
   created_at       TEXT NOT NULL
 );
 
@@ -100,15 +99,14 @@ CREATE TABLE user_dms (
   PRIMARY KEY (user_id, channel_type)
 );
 
--- Sessions: one folder = one session = one container when running
+-- Sessions: one folder = one session = one runner when running
 CREATE TABLE sessions (
   id                 TEXT PRIMARY KEY,
   agent_group_id     TEXT NOT NULL REFERENCES agent_groups(id),
   messaging_group_id TEXT REFERENCES messaging_groups(id),
   thread_id          TEXT,
-  agent_provider     TEXT,
   status             TEXT DEFAULT 'active',
-  container_status   TEXT DEFAULT 'stopped',
+  runner_status   TEXT DEFAULT 'stopped',
   last_active        TEXT,
   created_at         TEXT NOT NULL
 );
@@ -147,10 +145,10 @@ CREATE TABLE pending_sender_approvals (
 
 /**
  * Session DB schemas — split into two files so each has exactly one writer.
- * This eliminates SQLite write contention across the host-container mount boundary.
+ * This eliminates SQLite write contention across the host-runner mount boundary.
  *
- *   inbound.db  — host writes, container reads (read-only mount or open read-only)
- *   outbound.db — container writes, host reads (read-only open)
+ *   inbound.db  — host writes, runner reads (read-only mount or open read-only)
+ *   outbound.db — runner writes, host reads (read-only open)
  */
 
 /** Host-owned: inbound messages + delivery tracking + destination map. */
@@ -178,13 +176,13 @@ CREATE TABLE IF NOT EXISTS messages_in (
   -- written before this column existed.
   source_session_id TEXT,
   on_wake        INTEGER NOT NULL DEFAULT 0
-               -- 1 = only deliver on the container's first poll (fresh start).
-               -- Dying containers (past first poll) skip these rows.
+               -- 1 = only deliver on the runner's first poll (fresh start).
+               -- Dying runners (past first poll) skip these rows.
 );
 CREATE INDEX IF NOT EXISTS idx_messages_in_series ON messages_in(series_id);
 
 -- Host tracks delivery outcomes for messages_out IDs.
--- Avoids writing to outbound.db (container-owned).
+-- Avoids writing to outbound.db (runner-owned).
 CREATE TABLE IF NOT EXISTS delivered (
   message_out_id      TEXT PRIMARY KEY,
   platform_message_id TEXT,
@@ -193,9 +191,9 @@ CREATE TABLE IF NOT EXISTS delivered (
 );
 
 -- Destination map for this session's agent.
--- Host overwrites on every container wake AND on demand (rewires, new child
--- agents, etc.). Container queries this live on every lookup, so changes
--- take effect mid-session without requiring a container restart.
+-- Host overwrites on every runner wake AND on demand (rewires, new child
+-- agents, etc.). Runner queries this live on every lookup, so changes
+-- take effect mid-session without requiring a runner restart.
 CREATE TABLE IF NOT EXISTS destinations (
   name            TEXT PRIMARY KEY,
   display_name    TEXT,
@@ -206,8 +204,8 @@ CREATE TABLE IF NOT EXISTS destinations (
 );
 
 -- Default reply routing for this session. Single-row table (id=1).
--- Host overwrites on every container wake from the session's messaging_group
--- and thread_id. Container reads it in send_message / ask_user_question to
+-- Host overwrites on every runner wake from the session's messaging_group
+-- and thread_id. Runner reads it in send_message / ask_user_question to
 -- default the channel/thread of outbound messages when the agent doesn't
 -- specify an explicit destination.
 CREATE TABLE IF NOT EXISTS session_routing (
@@ -218,7 +216,7 @@ CREATE TABLE IF NOT EXISTS session_routing (
 );
 `;
 
-/** Container-owned: outbound messages + processing acknowledgments. */
+/** Runner-owned: outbound messages + processing acknowledgments. */
 export const OUTBOUND_SCHEMA = `
 CREATE TABLE IF NOT EXISTS messages_out (
   id             TEXT PRIMARY KEY,
@@ -234,29 +232,29 @@ CREATE TABLE IF NOT EXISTS messages_out (
   content        TEXT NOT NULL
 );
 
--- Container tracks processing status here instead of updating messages_in.
+-- Runner tracks processing status here instead of updating messages_in.
 -- Host reads this to know which messages have been processed.
--- On container startup, stale 'processing' entries are cleared (crash recovery).
+-- On runner startup, stale 'processing' entries are cleared (crash recovery).
 CREATE TABLE IF NOT EXISTS processing_ack (
   message_id     TEXT PRIMARY KEY,
   status         TEXT NOT NULL,
   status_changed TEXT NOT NULL
 );
 
--- Persistent key/value state owned by the container. Used (among other things)
+-- Persistent key/value state owned by the runner. Used (among other things)
 -- to store the SDK session ID so the agent's conversation resumes across
--- container restarts. Cleared by /clear.
+-- runner restarts. Cleared by /clear.
 CREATE TABLE IF NOT EXISTS session_state (
   key        TEXT PRIMARY KEY,
   value      TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
 
--- Current tool-in-flight state. Single-row table (id=1). Container writes on
+-- Current tool-in-flight state. Single-row table (id=1). Runner writes on
 -- PreToolUse and clears on PostToolUse / PostToolUseFailure. Host reads in the
 -- sweep to extend the stuck-tolerance window when Bash is running with a
 -- declared timeout > 60s (long-running scripts shouldn't be flagged as stuck).
-CREATE TABLE IF NOT EXISTS container_state (
+CREATE TABLE IF NOT EXISTS runner_state (
   id                       INTEGER PRIMARY KEY CHECK (id = 1),
   current_tool             TEXT,
   tool_declared_timeout_ms INTEGER,

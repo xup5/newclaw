@@ -3,7 +3,7 @@
  * Polls session outbound DBs for undelivered messages, delivers through channel adapters.
  *
  * Two-DB architecture:
- *   - Reads messages_out from outbound.db (container-owned, opened read-only)
+ *   - Reads messages_out from outbound.db (runner-owned, opened read-only)
  *   - Tracks delivery in inbound.db's `delivered` table (host-owned)
  *   - Never writes to outbound.db — preserves single-writer-per-file invariant
  */
@@ -104,7 +104,7 @@ export function setDeliveryAdapter(adapter: ChannelDeliveryAdapter): void {
   }
 }
 
-/** Start the active container poll loop (~1s). */
+/** Start the active runner poll loop (~1s). */
 export function startActiveDeliveryPoll(): void {
   if (activePolling) return;
   activePolling = true;
@@ -403,8 +403,8 @@ export function registerDeliveryAction(action: string, handler: DeliveryActionHa
 }
 
 /**
- * Handle system actions from the container agent.
- * These are written to messages_out because the container can't write to inbound.db.
+ * Handle system actions from the runner agent.
+ * These are written to messages_out because the runner can't write to inbound.db.
  * The host applies them to inbound.db here.
  */
 async function handleSystemAction(

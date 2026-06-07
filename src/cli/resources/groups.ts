@@ -1,70 +1,34 @@
-import type { McpServerConfig } from '../../container-config.js';
-import fs from 'fs';
-import path from 'path';
-import { buildAgentGroupImage, killContainer, wakeContainer } from '../../container-runner.js';
-import { restartAgentGroupContainers } from '../../container-restart.js';
+import type { McpServerConfig } from '../../agent-config.js';
 import { getDb, hasTable } from '../../db/connection.js';
-import { getSession } from '../../db/sessions.js';
+import { getSessionsByAgentGroup, getSession } from '../../db/sessions.js';
+import { getAgentConfig, updateAgentConfigJson, updateAgentConfigScalars } from '../../db/agent-configs.js';
+import { killRunner, wakeRunner } from '../../runner-manager.js';
 import { writeSessionMessage } from '../../session-manager.js';
-import {
-  getContainerConfig,
-  updateContainerConfigScalars,
-  updateContainerConfigJson,
-} from '../../db/container-configs.js';
-import type { ContainerConfigRow } from '../../types.js';
+import type { AgentConfigRow } from '../../types.js';
 import { registerResource } from '../crud.js';
 
-/** Deserialize JSON columns for display. */
-function presentConfig(row: ContainerConfigRow): Record<string, unknown> {
+function presentConfig(row: AgentConfigRow): Record<string, unknown> {
   return {
     agent_group_id: row.agent_group_id,
     provider: row.provider,
-    runtime: row.runtime,
     model: row.model,
     effort: row.effort,
-    image_tag: row.image_tag,
     assistant_name: row.assistant_name,
     max_messages_per_prompt: row.max_messages_per_prompt,
     skills: JSON.parse(row.skills),
     mcp_servers: JSON.parse(row.mcp_servers),
-    packages_apt: JSON.parse(row.packages_apt),
     packages_npm: JSON.parse(row.packages_npm),
-    additional_mounts: JSON.parse(row.additional_mounts),
+    host_paths: JSON.parse(row.host_paths),
     cli_scope: row.cli_scope,
     updated_at: row.updated_at,
   };
-}
-
-function parseBoolean(value: unknown, defaultValue: boolean): boolean {
-  if (value === undefined) return defaultValue;
-  if (typeof value === 'boolean') return value;
-  const normalized = String(value).trim().toLowerCase();
-  if (['1', 'true', 'yes', 'y'].includes(normalized)) return true;
-  if (['0', 'false', 'no', 'n'].includes(normalized)) return false;
-  throw new Error('boolean value must be one of: true, false, 1, 0, yes, no');
-}
-
-function defaultContainerPath(hostPath: string): string {
-  const base = path.basename(hostPath.replace(/\/+$/, ''));
-  if (!base) throw new Error('--container-path is required when host path has no basename');
-  return base;
-}
-
-function visibleMountPath(containerPath: string): string {
-  return path.isAbsolute(containerPath) ? containerPath : `/workspace/extra/${containerPath}`;
-}
-
-function normalizeMountPath(input: string): string {
-  if (!input.trim()) throw new Error('--host-path is required');
-  return path.resolve(input.replace(/^~(?=$|\/)/, process.env.HOME || ''));
 }
 
 registerResource({
   name: 'group',
   plural: 'groups',
   table: 'agent_groups',
-  description:
-    'Agent group — a logical agent identity. Each group has its own workspace folder (CLAUDE.md, skills, container config), conversation history, and container image. Multiple messaging groups can be wired to one agent group.',
+  description: 'Agent group — a logical agent identity with a host workspace, provider config, memory, and sessions.',
   idColumn: 'id',
   scopeField: 'id',
   columns: [
@@ -72,48 +36,32 @@ registerResource({
     {
       name: 'name',
       type: 'string',
-      description: 'Display name shown in logs, help output, and channel adapters. Does not need to be unique.',
+      description: 'Display name shown in logs, help output, and channel adapters.',
       required: true,
       updatable: true,
     },
     {
       name: 'folder',
       type: 'string',
-      description:
-        'Directory name under groups/ on the host. Must be unique. Contains CLAUDE.md, skills/, and container.json. Cannot be changed after creation.',
+      description: 'Directory name under groups/ on the host. Contains AGENTS.md, AGENTS.local.md, and agent.json.',
       required: true,
     },
     { name: 'created_at', type: 'string', description: 'Auto-set.', generated: true },
   ],
-  // `delete` is intentionally not in `operations` — the generic single-table
-  // DELETE violates FK constraints (see #2525). The cascading handler is
-  // provided as `customOperations.delete` below.
   operations: { list: 'open', get: 'open', create: 'approval', update: 'approval' },
   customOperations: {
     delete: {
       access: 'approval',
-      description:
-        'Delete an agent group and its dependent rows (sessions, destinations, approvals, role grants, ' +
-        'memberships, channel wirings). FK-ordered cascade in a single transaction. ' +
-        'Use --id <group-id>. Out of scope: killing running containers, on-disk cleanup of groups/<folder>/ and data/v2-sessions/<group-id>/.',
+      description: 'Delete an agent group and dependent central DB rows. Use --id <group-id>.',
       handler: async (args) => {
         const id = args.id as string;
         if (!id) throw new Error('--id is required');
         const db = getDb();
-
-        // Verify the group exists before doing anything — preserves the
-        // genericDelete behaviour of throwing "not found" for unknown IDs.
         const exists = db.prepare('SELECT 1 FROM agent_groups WHERE id = ? LIMIT 1').get(id);
         if (!exists) throw new Error(`group not found: ${id}`);
 
         const hasAgentDestinations = hasTable(db, 'agent_destinations');
         const hasPendingApprovals = hasTable(db, 'pending_approvals');
-
-        // FK-ordered cascade. Single sync transaction — better-sqlite3 rolls
-        // back the whole thing if any statement throws (e.g. an FK constraint
-        // we missed), so the central DB stays consistent. The `removed` counts
-        // are sourced from each DELETE's `changes` so they describe exactly
-        // what the transaction did, not a separate pre-flight snapshot.
         const cascade = db.transaction((groupId: string) => {
           const counts = {
             sessions: 0,
@@ -126,9 +74,8 @@ registerResource({
             messaging_group_agents: 0,
             agent_group_members: 0,
             user_roles: 0,
-            container_configs: 0,
+            agent_configs: 0,
           };
-
           if (hasAgentDestinations) {
             counts.agent_destinations_owned = db
               .prepare('DELETE FROM agent_destinations WHERE agent_group_id = ?')
@@ -163,114 +110,66 @@ registerResource({
             .prepare('DELETE FROM agent_group_members WHERE agent_group_id = ?')
             .run(groupId).changes;
           counts.user_roles = db.prepare('DELETE FROM user_roles WHERE agent_group_id = ?').run(groupId).changes;
-          // migration-014 has ON DELETE CASCADE on container_configs.agent_group_id;
-          // the explicit delete here mirrors the other tables and surfaces the count.
-          counts.container_configs = db
-            .prepare('DELETE FROM container_configs WHERE agent_group_id = ?')
-            .run(groupId).changes;
+          counts.agent_configs = db.prepare('DELETE FROM agent_configs WHERE agent_group_id = ?').run(groupId).changes;
           db.prepare('DELETE FROM agent_groups WHERE id = ?').run(groupId);
           return counts;
         });
-        const removed = cascade(id);
-
-        return { deleted: id, removed };
+        return { deleted: id, removed: cascade(id) };
       },
     },
     restart: {
       access: 'approval',
-      description:
-        'Restart containers for a group. Use --id <group-id> [--rebuild] [--message <text>]. ' +
-        'From inside a container, --id is auto-filled and only the calling session is restarted. ' +
-        '--rebuild rebuilds the container image first (required for package changes). ' +
-        '--message sets an on-wake instruction for the fresh container to act on when it starts — ' +
-        'use this when you need to continue after the restart (e.g. verify a new tool works, notify the user). ' +
-        'Without --message, the container stops and only starts again on the next user message.',
+      description: 'Restart active runners for a group. Use --id <group-id> [--message <text>].',
       handler: async (args, ctx) => {
         const id = (args.id as string) || (ctx.caller === 'agent' ? ctx.agentGroupId : undefined);
         if (!id) throw new Error('--id is required');
-        if (args.rebuild) {
-          await buildAgentGroupImage(id);
-        }
         const message = args.message as string | undefined;
 
-        // From an agent: scope to the calling session only
         if (ctx.caller === 'agent') {
-          if (message) {
-            writeSessionMessage(id, ctx.sessionId, {
-              id: `restart-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-              kind: 'chat',
-              timestamp: new Date().toISOString(),
-              platformId: id,
-              channelType: 'agent',
-              threadId: null,
-              content: JSON.stringify({ text: message, sender: 'system', senderId: 'system' }),
-              onWake: 1,
-            });
-          }
-          killContainer(
-            ctx.sessionId,
-            'restarted via ncl',
-            message
-              ? () => {
-                  const s = getSession(ctx.sessionId);
-                  if (s) wakeContainer(s);
-                }
-              : undefined,
-          );
-          return { restarted: 1, rebuilt: !!args.rebuild };
+          if (message) writeWakeMessage(id, ctx.sessionId, message);
+          killRunner(ctx.sessionId, 'restarted via ncl', message ? () => wakeOwnSession(ctx.sessionId) : undefined);
+          return { restarted: 1 };
         }
 
-        // From the host: restart all running containers in the group
-        const count = restartAgentGroupContainers(id, 'restarted via ncl', message);
-        return { restarted: count, rebuilt: !!args.rebuild };
+        let restarted = 0;
+        for (const session of getSessionsByAgentGroup(id)) {
+          if (message) writeWakeMessage(id, session.id, message);
+          killRunner(session.id, 'restarted via ncl', message ? () => wakeOwnSession(session.id) : undefined);
+          restarted += 1;
+        }
+        return { restarted };
       },
     },
     'config get': {
       access: 'open',
-      description: 'Show the container config for a group. Use --id <group-id>.',
+      description: 'Show the agent config for a group. Use --id <group-id>.',
       handler: async (args) => {
         const id = args.id as string;
         if (!id) throw new Error('--id is required');
-        const row = getContainerConfig(id);
-        if (!row) throw new Error(`No container config for group: ${id}`);
+        const row = getAgentConfig(id);
+        if (!row) throw new Error(`No agent config for group: ${id}`);
         return presentConfig(row);
       },
     },
     'config update': {
       access: 'approval',
       description:
-        'Update container config scalar fields. Changes are saved but do NOT take effect until you run `ncl groups restart`. ' +
-        'Use --id <group-id> and any of: --runtime host|docker, --provider, --model, --effort, --image-tag, --assistant-name, --max-messages-per-prompt, --cli-scope.',
+        'Update agent config scalar fields. Use --id <group-id> and any of: --provider, --model, --effort, --assistant-name, --max-messages-per-prompt, --cli-scope.',
       handler: async (args) => {
         const id = args.id as string;
         if (!id) throw new Error('--id is required');
-        const row = getContainerConfig(id);
-        if (!row) throw new Error(`No container config for group: ${id}`);
+        const row = getAgentConfig(id);
+        if (!row) throw new Error(`No agent config for group: ${id}`);
 
         const updates: Partial<
           Pick<
-            ContainerConfigRow,
-            | 'runtime'
-            | 'provider'
-            | 'model'
-            | 'effort'
-            | 'image_tag'
-            | 'assistant_name'
-            | 'max_messages_per_prompt'
-            | 'cli_scope'
+            AgentConfigRow,
+            'provider' | 'model' | 'effort' | 'assistant_name' | 'max_messages_per_prompt' | 'cli_scope'
           >
         > = {};
-        if (args.runtime !== undefined) {
-          const runtime = args.runtime as string;
-          if (!['host', 'docker'].includes(runtime)) {
-            throw new Error('--runtime must be one of: host, docker');
-          }
-          updates.runtime = runtime;
-        }
         if (args.provider !== undefined) updates.provider = args.provider as string;
         if (args.model !== undefined) updates.model = args.model as string;
         if (args.effort !== undefined) updates.effort = args.effort as string;
-        if (args.image_tag !== undefined) updates.image_tag = args.image_tag as string;
         if (args.assistant_name !== undefined) updates.assistant_name = args.assistant_name as string;
         if (args.max_messages_per_prompt !== undefined)
           updates.max_messages_per_prompt = Number(args.max_messages_per_prompt);
@@ -281,221 +180,65 @@ registerResource({
           }
           updates.cli_scope = scope;
         }
-
-        if (Object.keys(updates).length === 0) {
-          throw new Error(
-            'Nothing to update — provide at least one of: --runtime, --provider, --model, --effort, --image-tag, --assistant-name, --max-messages-per-prompt, --cli-scope',
-          );
-        }
-
-        updateContainerConfigScalars(id, updates);
-
-        const updated = getContainerConfig(id)!;
-        return presentConfig(updated);
+        if (Object.keys(updates).length === 0) throw new Error('Nothing to update.');
+        updateAgentConfigScalars(id, updates);
+        return presentConfig(getAgentConfig(id)!);
       },
     },
     'config add-mcp-server': {
       access: 'approval',
       description:
-        'Add an MCP server to a group. Requires `ncl groups restart` to take effect. ' +
-        'Use --id <group-id> --name <server-name> --command <cmd> [--args <json-array>] [--env <json-object>].',
+        'Add an MCP server to a group. Use --id <group-id> --name <server-name> --command <cmd> [--args <json-array>] [--env <json-object>].',
       handler: async (args) => {
         const id = args.id as string;
-        if (!id) throw new Error('--id is required');
         const name = args.name as string;
-        if (!name) throw new Error('--name is required');
         const command = args.command as string;
-        if (!command) throw new Error('--command is required');
-
-        const row = getContainerConfig(id);
-        if (!row) throw new Error(`No container config for group: ${id}`);
-
+        if (!id || !name || !command) throw new Error('--id, --name, and --command are required');
+        const row = getAgentConfig(id);
+        if (!row) throw new Error(`No agent config for group: ${id}`);
         const servers = JSON.parse(row.mcp_servers) as Record<string, McpServerConfig>;
         servers[name] = {
           command,
           args: args.args ? (JSON.parse(args.args as string) as string[]) : [],
           env: args.env ? (JSON.parse(args.env as string) as Record<string, string>) : {},
         };
-        updateContainerConfigJson(id, 'mcp_servers', servers);
-
+        updateAgentConfigJson(id, 'mcp_servers', servers);
         return { added: name, servers };
       },
     },
     'config remove-mcp-server': {
       access: 'approval',
-      description:
-        'Remove an MCP server from a group. Requires `ncl groups restart` to take effect. Use --id <group-id> --name <server-name>.',
+      description: 'Remove an MCP server from a group. Use --id <group-id> --name <server-name>.',
       handler: async (args) => {
         const id = args.id as string;
-        if (!id) throw new Error('--id is required');
         const name = args.name as string;
-        if (!name) throw new Error('--name is required');
-
-        const row = getContainerConfig(id);
-        if (!row) throw new Error(`No container config for group: ${id}`);
-
+        if (!id || !name) throw new Error('--id and --name are required');
+        const row = getAgentConfig(id);
+        if (!row) throw new Error(`No agent config for group: ${id}`);
         const servers = JSON.parse(row.mcp_servers) as Record<string, McpServerConfig>;
         if (!servers[name]) throw new Error(`MCP server "${name}" not found`);
         delete servers[name];
-        updateContainerConfigJson(id, 'mcp_servers', servers);
-
+        updateAgentConfigJson(id, 'mcp_servers', servers);
         return { removed: name };
-      },
-    },
-    'config add-package': {
-      access: 'approval',
-      description:
-        'Add a package to a group. Requires `ncl groups restart --rebuild` to take effect. Use --id <group-id> and --apt <pkg> or --npm <pkg>.',
-      handler: async (args) => {
-        const id = args.id as string;
-        if (!id) throw new Error('--id is required');
-
-        const row = getContainerConfig(id);
-        if (!row) throw new Error(`No container config for group: ${id}`);
-
-        const apt = args.apt as string | undefined;
-        const npm = args.npm as string | undefined;
-        if (!apt && !npm) throw new Error('Provide --apt <pkg> or --npm <pkg>');
-
-        if (apt) {
-          const existing = JSON.parse(row.packages_apt) as string[];
-          if (!existing.includes(apt)) {
-            existing.push(apt);
-            updateContainerConfigJson(id, 'packages_apt', existing);
-          }
-        }
-        if (npm) {
-          const existing = JSON.parse(row.packages_npm) as string[];
-          if (!existing.includes(npm)) {
-            existing.push(npm);
-            updateContainerConfigJson(id, 'packages_npm', existing);
-          }
-        }
-
-        return {
-          added: { apt: apt || null, npm: npm || null },
-          note: 'Image rebuild required for packages to take effect. Use install_packages from the agent or rebuild manually.',
-        };
-      },
-    },
-    'config remove-package': {
-      access: 'approval',
-      description:
-        'Remove a package from a group. Requires `ncl groups restart --rebuild` to take effect. Use --id <group-id> and --apt <pkg> or --npm <pkg>.',
-      handler: async (args) => {
-        const id = args.id as string;
-        if (!id) throw new Error('--id is required');
-
-        const row = getContainerConfig(id);
-        if (!row) throw new Error(`No container config for group: ${id}`);
-
-        const apt = args.apt as string | undefined;
-        const npm = args.npm as string | undefined;
-        if (!apt && !npm) throw new Error('Provide --apt <pkg> or --npm <pkg>');
-
-        if (apt) {
-          const existing = JSON.parse(row.packages_apt) as string[];
-          const filtered = existing.filter((p) => p !== apt);
-          updateContainerConfigJson(id, 'packages_apt', filtered);
-        }
-        if (npm) {
-          const existing = JSON.parse(row.packages_npm) as string[];
-          const filtered = existing.filter((p) => p !== npm);
-          updateContainerConfigJson(id, 'packages_npm', filtered);
-        }
-
-        return {
-          removed: { apt: apt || null, npm: npm || null },
-          note: 'Image rebuild required for package changes to take effect.',
-        };
-      },
-    },
-    'config add-mount': {
-      access: 'approval',
-      description:
-        'Add a host directory mount to a group. Use --id <group-id> --host-path <path> ' +
-        '[--container-path <relative-name-or-absolute-mirror-path>] [--readonly true|false]. ' +
-        'Relative container paths appear inside /workspace/extra/. Absolute container paths must mirror the host path. ' +
-        'Changes require `ncl groups restart --id <group-id>` unless the path is already covered by a broad existing mount.',
-      handler: async (args) => {
-        const id = args.id as string;
-        if (!id) throw new Error('--id is required');
-
-        const hostPathArg = (args.host_path ?? args['host-path']) as string | undefined;
-        if (!hostPathArg) throw new Error('--host-path is required');
-        const hostPath = normalizeMountPath(hostPathArg);
-        if (!fs.existsSync(hostPath)) throw new Error(`host path does not exist: ${hostPath}`);
-
-        const containerPath =
-          ((args.container_path ?? args['container-path']) as string | undefined)?.trim() ||
-          defaultContainerPath(hostPath);
-        const readonly = parseBoolean(args.readonly, false);
-
-        const row = getContainerConfig(id);
-        if (!row) throw new Error(`No container config for group: ${id}`);
-
-        const mounts = JSON.parse(row.additional_mounts) as Array<{
-          hostPath: string;
-          containerPath: string;
-          readonly?: boolean;
-        }>;
-        const existingIdx = mounts.findIndex((m) => m.containerPath === containerPath);
-        const mount = { hostPath, containerPath, readonly };
-        if (existingIdx >= 0) {
-          mounts[existingIdx] = mount;
-        } else {
-          mounts.push(mount);
-        }
-        updateContainerConfigJson(id, 'additional_mounts', mounts);
-
-        return {
-          added: mount,
-          replaced: existingIdx >= 0,
-          visible_at: visibleMountPath(containerPath),
-          note:
-            'Restart required for a currently running container to see this mount. ' +
-            'Use `ncl groups restart --id ' +
-            id +
-            '`.',
-        };
-      },
-    },
-    'config remove-mount': {
-      access: 'approval',
-      description:
-        'Remove a host directory mount from a group. Use --id <group-id> and either ' +
-        '--container-path <relative-name-or-absolute-path> or --host-path <path>. Changes require `ncl groups restart --id <group-id>`.',
-      handler: async (args) => {
-        const id = args.id as string;
-        if (!id) throw new Error('--id is required');
-
-        const containerPath = ((args.container_path ?? args['container-path']) as string | undefined)?.trim();
-        const hostPathArg = (args.host_path ?? args['host-path']) as string | undefined;
-        if (!containerPath && !hostPathArg) throw new Error('provide --container-path or --host-path');
-        const hostPath = hostPathArg ? normalizeMountPath(hostPathArg) : undefined;
-
-        const row = getContainerConfig(id);
-        if (!row) throw new Error(`No container config for group: ${id}`);
-
-        const mounts = JSON.parse(row.additional_mounts) as Array<{
-          hostPath: string;
-          containerPath: string;
-          readonly?: boolean;
-        }>;
-        const filtered = mounts.filter(
-          (m) => !(containerPath ? m.containerPath === containerPath : m.hostPath === hostPath),
-        );
-        if (filtered.length === mounts.length) {
-          throw new Error('mount not found');
-        }
-        updateContainerConfigJson(id, 'additional_mounts', filtered);
-
-        return {
-          removed: mounts.length - filtered.length,
-          remaining: filtered,
-          note: 'Restart required for a currently running container to drop this mount.',
-        };
       },
     },
   },
 });
+
+function writeWakeMessage(agentGroupId: string, sessionId: string, text: string): void {
+  writeSessionMessage(agentGroupId, sessionId, {
+    id: `restart-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    kind: 'chat',
+    timestamp: new Date().toISOString(),
+    platformId: agentGroupId,
+    channelType: 'agent',
+    threadId: null,
+    content: JSON.stringify({ text, sender: 'system', senderId: 'system' }),
+    onWake: 1,
+  });
+}
+
+function wakeOwnSession(sessionId: string): void {
+  const session = getSession(sessionId);
+  if (session) wakeRunner(session).catch(() => {});
+}

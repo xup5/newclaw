@@ -25,7 +25,7 @@ import { isSafeAttachmentName } from '../../attachment-safety.js';
 import { getAgentGroup } from '../../db/agent-groups.js';
 import { getInboundSourceSessionId, getMostRecentPeerSourceSessionId } from '../../db/session-db.js';
 import { getSession } from '../../db/sessions.js';
-import { wakeContainer } from '../../container-runner.js';
+import { wakeRunner } from '../../runner-manager.js';
 import { log } from '../../log.js';
 import { openInboundDb, resolveSession, sessionDir, writeSessionMessage } from '../../session-manager.js';
 import type { Session } from '../../types.js';
@@ -104,8 +104,8 @@ export interface RoutableAgentMessage {
   content: string;
   /**
    * For replies, the id of the inbound message being replied to. The
-   * container's formatter sets this from the first inbound in the batch
-   * (`container/agent-runner/src/formatter.ts`). Used here to route the
+   * runner's formatter sets this from the first inbound in the batch
+   * (`runner/agent-runner/src/formatter.ts`). Used here to route the
    * reply back to the originating session — see `resolveTargetSession`.
    */
   in_reply_to: string | null;
@@ -142,9 +142,9 @@ function resolveTargetSession(msg: RoutableAgentMessage, sourceSession: Session,
       originSessionId = getInboundSourceSessionId(srcDb, msg.in_reply_to);
     }
     if (!originSessionId) {
-      // Peer-affinity fallback — covers the case where the container's
+      // Peer-affinity fallback — covers the case where the runner's
       // outbound write didn't carry in_reply_to (e.g. legacy MCP send_message
-      // path, container running pre-fix code).
+      // path, runner running pre-fix code).
       originSessionId = getMostRecentPeerSourceSessionId(srcDb, targetAgentGroupId);
     }
   } finally {
@@ -203,7 +203,7 @@ export async function routeAgentMessage(msg: RoutableAgentMessage, session: Sess
     forwardedFileCount: countForwardedFiles(forwardedContent),
   });
   const fresh = getSession(targetSession.id);
-  if (fresh) await wakeContainer(fresh);
+  if (fresh) await wakeRunner(fresh);
 }
 
 /**

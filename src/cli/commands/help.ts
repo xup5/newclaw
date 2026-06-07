@@ -4,8 +4,8 @@
  *   ncl help               — list all resources and commands
  *   ncl groups help         — show group resource details (verbs, columns, enums)
  */
-import { getContainerConfig } from '../../db/container-configs.js';
-import { getResource, getResources } from '../crud.js';
+import { getAgentConfig } from '../../db/agent-configs.js';
+import { getResources } from '../crud.js';
 import type { CallerContext } from '../frame.js';
 import { listCommands, register } from '../registry.js';
 
@@ -13,7 +13,7 @@ const GROUP_SCOPE_RESOURCES = new Set(['groups', 'sessions', 'destinations', 'me
 
 function getCliScope(ctx: CallerContext): string | undefined {
   if (ctx.caller !== 'agent') return undefined;
-  return getContainerConfig(ctx.agentGroupId)?.cli_scope ?? 'group';
+  return getAgentConfig(ctx.agentGroupId)?.cli_scope ?? 'group';
 }
 
 register({

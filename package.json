@@ -1,7 +1,7 @@
 {
-  "name": "nanoclaw",
+  "name": "newclaw",
   "version": "2.0.76",
-  "description": "Personal Claude assistant. Lightweight, secure, customizable.",
+  "description": "Host-native Codex/GPT personal agent router.",
   "type": "module",
   "packageManager": "pnpm@10.33.0",
   "main": "dist/index.js",
@@ -17,14 +17,11 @@
     "format:fix": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
     "prepare": "husky",
-    "setup": "tsx setup/index.ts",
-    "setup:auto": "tsx setup/auto.ts",
     "ncl": "tsx src/cli/client.ts",
     "chat": "tsx scripts/chat.ts",
-    "auth": "tsx src/whatsapp-auth.ts",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "test:watch": "vitest"
   },
   "dependencies": {

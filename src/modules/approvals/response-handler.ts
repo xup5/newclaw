@@ -12,7 +12,7 @@
  * The response handler is registered via core's `registerResponseHandler`;
  * core iterates handlers and the first one to return `true` claims the response.
  */
-import { wakeContainer } from '../../container-runner.js';
+import { wakeRunner } from '../../runner-manager.js';
 import { deletePendingApproval, getPendingApproval, getSession } from '../../db/sessions.js';
 import type { ResponsePayload } from '../../response-registry.js';
 import { log } from '../../log.js';
@@ -73,7 +73,7 @@ async function handleRegisteredApproval(
     notify(`Your ${approval.action} request was rejected by admin.`);
     log.info('Approval rejected', { approvalId: approval.approval_id, action: approval.action, userId });
     deletePendingApproval(approval.approval_id);
-    await wakeContainer(session);
+    await wakeRunner(session);
     return;
   }
 
@@ -86,7 +86,7 @@ async function handleRegisteredApproval(
     });
     notify(`Your ${approval.action} was approved, but no handler is installed to apply it.`);
     deletePendingApproval(approval.approval_id);
-    await wakeContainer(session);
+    await wakeRunner(session);
     return;
   }
 
@@ -102,5 +102,5 @@ async function handleRegisteredApproval(
   }
 
   deletePendingApproval(approval.approval_id);
-  await wakeContainer(session);
+  await wakeRunner(session);
 }

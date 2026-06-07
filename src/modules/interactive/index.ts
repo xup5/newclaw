@@ -1,10 +1,10 @@
 /**
  * Interactive module — generic ask_user_question flow.
  *
- * Container-side `ask_user_question` writes a chat-sdk card to outbound.db +
+ * Runner-side `ask_user_question` writes a chat-sdk card to outbound.db +
  * polls inbound.db for a `question_response` system message. On the host side
  * this module handles the button-click response: look up the pending_questions
- * row, write the response into the session's inbound.db, wake the container.
+ * row, write the response into the session's inbound.db, wake the runner.
  *
  * The `createPendingQuestion` call in `deliverMessage` (delivery.ts) stays
  * inline in core — it's 15 lines guarded by `hasTable('pending_questions')`,
@@ -12,7 +12,7 @@
  */
 import { getDb, hasTable } from '../../db/connection.js';
 import { deletePendingQuestion, getPendingQuestion, getSession } from '../../db/sessions.js';
-import { wakeContainer } from '../../container-runner.js';
+import { wakeRunner } from '../../runner-manager.js';
 import { registerResponseHandler, type ResponsePayload } from '../../response-registry.js';
 import { log } from '../../log.js';
 import { writeSessionMessage } from '../../session-manager.js';
@@ -52,7 +52,7 @@ async function handleInteractiveResponse(payload: ResponsePayload): Promise<bool
     sessionId: session.id,
   });
 
-  await wakeContainer(session);
+  await wakeRunner(session);
   return true;
 }
 

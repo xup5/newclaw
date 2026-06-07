@@ -1,11 +1,11 @@
 /**
- * Session lifecycle: folders, DBs, messages, container status.
+ * Session lifecycle: folders, DBs, messages, runner status.
  *
- * Two-DB split — inbound.db (host writes) + outbound.db (container writes).
+ * Two-DB split — inbound.db (host writes) + outbound.db (runner writes).
  * Three cross-mount invariants are load-bearing:
  *   1. journal_mode=DELETE — WAL's mmapped -shm doesn't refresh host→guest;
- *      the container would silently miss every new message.
- *   2. Host opens-writes-CLOSES per op — close invalidates the container's
+ *      the runner would silently miss every new message.
+ *   2. Host opens-writes-CLOSES per op — close invalidates the runner's
  *      page cache; a long-lived connection freezes its view at first read.
  *   3. One writer per file — DELETE-mode journal-unlink isn't atomic across
  *      the mount; concurrent writers corrupt the DB.
@@ -58,12 +58,12 @@ export function inboundDbPath(agentGroupId: string, sessionId: string): string {
   return path.join(sessionDir(agentGroupId, sessionId), 'inbound.db');
 }
 
-/** Path to the container-owned outbound DB (messages_out + processing_ack). */
+/** Path to the runner-owned outbound DB (messages_out + processing_ack). */
 export function outboundDbPath(agentGroupId: string, sessionId: string): string {
   return path.join(sessionDir(agentGroupId, sessionId), 'outbound.db');
 }
 
-/** Path to the container heartbeat file (touched instead of DB writes). */
+/** Path to the runner heartbeat file (touched instead of DB writes). */
 export function heartbeatPath(agentGroupId: string, sessionId: string): string {
   return path.join(sessionDir(agentGroupId, sessionId), '.heartbeat');
 }
@@ -118,9 +118,8 @@ export function resolveSession(
     agent_group_id: agentGroupId,
     messaging_group_id: messagingGroupId,
     thread_id: lookupThreadId,
-    agent_provider: null,
     status: 'active',
-    container_status: 'stopped',
+    runner_status: 'stopped',
     last_active: null,
     created_at: new Date().toISOString(),
   };
@@ -145,11 +144,11 @@ export function initSessionFolder(agentGroupId: string, sessionId: string): void
 /**
  * Write the default reply routing for a session into its inbound.db.
  *
- * The container reads this as the default (channel_type, platform_id, thread_id)
+ * The runner reads this as the default (channel_type, platform_id, thread_id)
  * for outbound messages when the agent doesn't specify an explicit destination.
  * Derived from session.messaging_group_id → messaging_groups row + session.thread_id.
  *
- * Called on every container wake alongside the agent-to-agent module's
+ * Called on every runner wake alongside the agent-to-agent module's
  * writeDestinations() (when installed) so the latest routing is always in
  * place, including after admin rewiring.
  */
@@ -206,7 +205,7 @@ export function writeSessionMessage(
     /**
      * 1 = this message should wake the agent (the default); 0 = accumulate
      * as context only, don't wake. Host's countDueMessages gates on this
-     * column; the container still reads all prior messages as context when
+     * column; the runner still reads all prior messages as context when
      * a trigger-1 message does arrive.
      */
     trigger?: 0 | 1;
@@ -217,8 +216,8 @@ export function writeSessionMessage(
      */
     sourceSessionId?: string | null;
     /**
-     * 1 = only deliver on the container's first poll (fresh start).
-     * Dying containers (past first poll) skip these rows.
+     * 1 = only deliver on the runner's first poll (fresh start).
+     * Dying runners (past first poll) skip these rows.
      */
     onWake?: 0 | 1;
   },
@@ -256,7 +255,7 @@ export function writeSessionMessage(
  * Both `messageId` and `att.name` originate in untrusted input. WhatsApp
  * passes `msg.key.id` through raw (and that field is client generated, so a
  * peer can craft it), and other adapters may follow. The session dir is
- * mounted writable into the container, so a compromised agent can also
+ * mounted writable into the runner, so a compromised agent can also
  * pre-place a symlink at `inbox/<future msgId>/` and wait for a chat message
  * with a matching id to redirect the host's write.
  *
@@ -304,7 +303,7 @@ function extractAttachmentFiles(
 
     const inboxDir = path.join(sessionDir(agentGroupId, sessionId), 'inbox', messageId);
 
-    // Refuse to mkdir through a symlink that the container may have pre placed
+    // Refuse to mkdir through a symlink that the runner may have pre placed
     // at inboxDir. With recursive:true, mkdirSync would silently no op on a
     // pre existing symlink and the subsequent writeFileSync would follow it.
     if (fs.existsSync(inboxDir)) {
@@ -369,7 +368,7 @@ export function openOutboundDb(agentGroupId: string, sessionId: string): Databas
   return openOutboundDbRaw(outboundDbPath(agentGroupId, sessionId));
 }
 
-/** Open the outbound DB for a session with write access. Only safe to call when no container is running. */
+/** Open the outbound DB for a session with write access. Only safe to call when no runner is running. */
 export function openOutboundDbRw(agentGroupId: string, sessionId: string): Database.Database {
   return openOutboundDbRwRaw(outboundDbPath(agentGroupId, sessionId));
 }
@@ -377,7 +376,7 @@ export function openOutboundDbRw(agentGroupId: string, sessionId: string): Datab
 /**
  * Write a message directly to a session's outbound DB so the host delivery
  * loop picks it up. Used by the command gate to send denial responses
- * without waking a container.
+ * without waking a runner.
  */
 export function writeOutboundDirect(
   agentGroupId: string,
@@ -409,7 +408,7 @@ export function openSessionDb(agentGroupId: string, sessionId: string): Database
   return openInboundDb(agentGroupId, sessionId);
 }
 
-/** Write a system response to a session's inbound.db so the container's findQuestionResponse() picks it up. */
+/** Write a system response to a session's inbound.db so the runner's findQuestionResponse() picks it up. */
 export function writeSystemResponse(
   agentGroupId: string,
   sessionId: string,
@@ -433,7 +432,7 @@ export function writeSystemResponse(
 /**
  * Load outbox attachments for a delivered message.
  *
- * Symmetric with `extractAttachmentFiles` on the inbound side: the container
+ * Symmetric with `extractAttachmentFiles` on the inbound side: the runner
  * writes files into the session's `outbox/<messageId>/` directory alongside
  * its `messages_out` row, and the host reads them back at delivery time.
  *
@@ -527,17 +526,17 @@ export function clearOutbox(agentGroupId: string, sessionId: string, messageId: 
   }
 }
 
-/** Mark a container as running for a session. */
-export function markContainerRunning(sessionId: string): void {
-  updateSession(sessionId, { container_status: 'running', last_active: new Date().toISOString() });
+/** Mark a runner as running for a session. */
+export function markRunnerRunning(sessionId: string): void {
+  updateSession(sessionId, { runner_status: 'running', last_active: new Date().toISOString() });
 }
 
-/** Mark a container as idle for a session. */
-export function markContainerIdle(sessionId: string): void {
-  updateSession(sessionId, { container_status: 'idle' });
+/** Mark a runner as idle for a session. */
+export function markRunnerIdle(sessionId: string): void {
+  updateSession(sessionId, { runner_status: 'idle' });
 }
 
-/** Mark a container as stopped for a session. */
-export function markContainerStopped(sessionId: string): void {
-  updateSession(sessionId, { container_status: 'stopped' });
+/** Mark a runner as stopped for a session. */
+export function markRunnerStopped(sessionId: string): void {
+  updateSession(sessionId, { runner_status: 'stopped' });
 }

@@ -8,7 +8,7 @@
  *   - `registerApprovalHandler(action, handler)` — called at module import
  *     time. When the admin approves a pending row with matching `action`,
  *     the response handler dispatches into the registered callback. Optional
- *     modules (self-mod, future module gates) register here.
+ *     modules register here.
  *
  * Approver picking lives here too — it used to sit in src/access.ts and got
  * folded in with the PR #7 re-tier. The picks functions walk user_roles
@@ -25,7 +25,7 @@ import { normalizeOptions, type RawOption } from '../../channels/ask-question.js
 import { getMessagingGroup } from '../../db/messaging-groups.js';
 import { createPendingApproval, getSession } from '../../db/sessions.js';
 import { getDeliveryAdapter } from '../../delivery.js';
-import { wakeContainer } from '../../container-runner.js';
+import { wakeRunner } from '../../runner-manager.js';
 import { log } from '../../log.js';
 import { writeSessionMessage } from '../../session-manager.js';
 import type { MessagingGroup, Session } from '../../types.js';
@@ -138,7 +138,7 @@ export function notifyAgent(session: Session, text: string): void {
   });
   const fresh = getSession(session.id);
   if (fresh) {
-    wakeContainer(fresh).catch((err) => log.error('Failed to wake container after notification', { err }));
+    wakeRunner(fresh).catch((err) => log.error('Failed to wake runner after notification', { err }));
   }
 }
 

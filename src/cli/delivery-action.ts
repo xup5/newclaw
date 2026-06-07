@@ -1,18 +1,15 @@
 /**
- * Delivery action handler for CLI requests from container agents.
+ * Delivery action handler for CLI requests from runner agents.
  *
  * When an agent writes a `cli_request` system message to outbound.db,
  * the delivery poll picks it up and calls this handler. We dispatch
  * the command and write the response back to inbound.db.
  */
-import type Database from 'better-sqlite3';
-
 import { registerDeliveryAction } from '../delivery.js';
 import { insertMessage } from '../db/session-db.js';
 import { log } from '../log.js';
 import { dispatch } from './dispatch.js';
 import type { RequestFrame } from './frame.js';
-import type { Session } from '../types.js';
 
 registerDeliveryAction('cli_request', async (content, session, inDb) => {
   const requestId = content.requestId as string;
@@ -36,7 +33,7 @@ registerDeliveryAction('cli_request', async (content, session, inDb) => {
 
   const response = await dispatch(req, ctx);
 
-  // Write response to inbound.db so the container can read it.
+  // Write response to inbound.db so the runner can read it.
   // trigger=0: don't wake the agent — this is an inline response to a tool call.
   insertMessage(inDb, {
     id: `cli-resp-${requestId}`,

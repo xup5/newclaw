@@ -1,12 +1,12 @@
 /**
  * Transport-agnostic dispatcher. Both the socket server (host caller) and
- * the per-session DB poller (container caller) call dispatch() with the
+ * the per-session DB poller (runner caller) call dispatch() with the
  * same frame and a transport-supplied CallerContext.
  *
- * Approval gating for risky calls from the container is the only branch
+ * Approval gating for risky calls from the runner is the only branch
  * that differs by caller. Host callers and `open` commands run inline.
  */
-import { getContainerConfig } from '../db/container-configs.js';
+import { getAgentConfig } from '../db/agent-configs.js';
 import { getAgentGroup } from '../db/agent-groups.js';
 import { getSession } from '../db/sessions.js';
 import { registerApprovalHandler, requestApproval } from '../modules/approvals/index.js';
@@ -40,7 +40,7 @@ export async function dispatch(req: RequestFrame, ctx: CallerContext): Promise<R
 
   // CLI scope enforcement for agent callers
   if (ctx.caller === 'agent') {
-    const configRow = getContainerConfig(ctx.agentGroupId);
+    const configRow = getAgentConfig(ctx.agentGroupId);
     const cliScope = configRow?.cli_scope ?? 'group';
 
     if (cliScope === 'disabled') {
@@ -148,7 +148,7 @@ export async function dispatch(req: RequestFrame, ctx: CallerContext): Promise<R
     // pre-handler `--id` auto-fill (groups/destinations) or gated behind approval,
     // so they can't reach another group's data anyway.
     if (ctx.caller === 'agent' && cmd.resource && cmd.generic) {
-      const configRow = getContainerConfig(ctx.agentGroupId);
+      const configRow = getAgentConfig(ctx.agentGroupId);
       if ((configRow?.cli_scope ?? 'group') === 'group') {
         const def = getResource(cmd.resource);
         const groupField = def?.scopeField;
@@ -178,7 +178,7 @@ export async function dispatch(req: RequestFrame, ctx: CallerContext): Promise<R
   }
 }
 
-registerApprovalHandler('cli_command', async ({ session, payload, userId, notify }) => {
+registerApprovalHandler('cli_command', async ({ session: _session, payload, userId: _userId, notify }) => {
   const frame = payload.frame as RequestFrame;
   const response = await dispatch(frame, { caller: 'host' });
 

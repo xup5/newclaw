@@ -6,12 +6,12 @@
  * `./agent-route.js` via a dynamic import when it sees `msg.channel_type === 'agent'`.
  *
  * Host integration points:
- *   - `src/container-runner.ts::spawnContainer` dynamically imports
+ *   - `src/runner-manager.ts::spawnRunner` dynamically imports
  *     `./write-destinations.js` on every wake (guarded by `hasTable('agent_destinations')`).
  *   - `src/delivery.ts::deliverMessage` dynamically imports `./agent-route.js`
  *     when `msg.channel_type === 'agent'`.
  *
- * Without this module: `agent_destinations` table absent ⇒ container-runner
+ * Without this module: `agent_destinations` table absent ⇒ runner-manager
  * skips destination projection, ACL check in delivery skips, `create_agent`
  * system action logs "Unknown system action", `channel_type='agent'` messages
  * throw because the module isn't installed.

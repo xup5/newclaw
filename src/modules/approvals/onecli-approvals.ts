@@ -114,7 +114,7 @@ async function handleRequest(request: ApprovalRequest): Promise<Decision> {
   if (!adapterRef) return 'deny';
 
   // Originating agent group is carried on the request via OneCLI's agent
-  // identifier (set by container-runner.ts to agentGroup.id). Use it as
+  // identifier (set by runner-manager.ts to agentGroup.id). Use it as
   // the scope for approver selection: admin @ group → global admin → owner.
   const originGroup = request.agent.externalId ? getAgentGroup(request.agent.externalId) : undefined;
   const agentGroupId = originGroup?.id ?? null;

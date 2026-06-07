@@ -3,7 +3,7 @@
  *
  * Channel adapter event → resolve messaging group → sender resolver →
  * resolve/pick agent → access gate → resolve/create session → write
- * messages_in → wake container.
+ * messages_in → wake runner.
  *
  * Two module hooks (registered by the permissions module):
  *   - `setSenderResolver` runs BEFORE agent resolution so user rows get
@@ -30,7 +30,7 @@ import { findSessionForAgent } from './db/sessions.js';
 import { startTypingRefresh, stopTypingRefresh } from './modules/typing/index.js';
 import { log } from './log.js';
 import { resolveSession, writeSessionMessage, writeOutboundDirect } from './session-manager.js';
-import { wakeContainer } from './container-runner.js';
+import { wakeRunner } from './runner-manager.js';
 import { getSession } from './db/sessions.js';
 import type { AgentGroup, MessagingGroup, MessagingGroupAgent } from './types.js';
 import type { InboundEvent } from './channels/adapter.js';
@@ -257,7 +257,7 @@ export async function routeInbound(event: InboundEvent): Promise<void> {
 
   // 4. Fan-out: evaluate each wired agent independently against engage_mode,
   //    sender_scope, and access gate. An agent that engages gets its own
-  //    session and container wake. An agent that declines but has
+  //    session and runner wake. An agent that declines but has
   //    ignored_message_policy='accumulate' still gets the message stored in
   //    its session (trigger=0) so the context is available when it does
   //    engage later. Drop policy = skip silently.
@@ -351,7 +351,7 @@ export async function routeInbound(event: InboundEvent): Promise<void> {
  *                      (`agent_group.name`) is irrelevant — users address
  *                      the bot via its platform username (@botname on
  *                      Telegram, user-id mention on Slack/Discord), not
- *                      via the agent's NanoClaw-side display name. If a
+ *                      via the agent's NewClaw-side display name. If a
  *                      user wants to disambiguate between multiple agents
  *                      wired to one chat, use engage_mode='pattern' with
  *                      the disambiguator as the regex.
@@ -424,7 +424,7 @@ async function deliverToAgent(
     threadId: event.threadId,
   };
 
-  // Command gate: classify slash commands before they reach the container.
+  // Command gate: classify slash commands before they reach the runner.
   // Filtered commands are dropped silently. Denied admin commands get a
   // permission-denied response written directly to messages_out.
   if (event.message.kind === 'chat' || event.message.kind === 'chat-sdk') {
@@ -475,8 +475,8 @@ async function deliverToAgent(
     startTypingRefresh(session.id, session.agent_group_id, event.channelType, event.platformId, event.threadId);
     const freshSession = getSession(session.id);
     if (freshSession) {
-      const woke = await wakeContainer(freshSession);
-      // wakeContainer never throws — it returns false on transient spawn
+      const woke = await wakeRunner(freshSession);
+      // wakeRunner never throws — it returns false on transient spawn
       // failure (host-sweep retries). Stop the typing indicator we just
       // started so it doesn't leak; the inbound row stays pending.
       if (!woke) stopTypingRefresh(freshSession.id);

@@ -1,15 +1,15 @@
 /**
  * Delivery action handlers for scheduling.
  *
- * The container can't write to inbound.db (host-owned). When the agent calls
- * schedule_task / cancel_task / etc. via MCP, the container writes a
+ * The runner can't write to inbound.db (host-owned). When the agent calls
+ * schedule_task / cancel_task / etc. via MCP, the runner writes a
  * `kind='system'` outbound message with an `action` field. The delivery path
  * reaches into this module via the delivery-action registry and we apply the
  * change to inbound.db here.
  */
 import type Database from 'better-sqlite3';
 
-import { wakeContainer } from '../../container-runner.js';
+import { wakeRunner } from '../../runner-manager.js';
 import { getSession } from '../../db/sessions.js';
 import { log } from '../../log.js';
 import { writeSessionMessage } from '../../session-manager.js';
@@ -105,9 +105,7 @@ export async function handleUpdateTask(
     });
     const fresh = getSession(session.id);
     if (fresh) {
-      wakeContainer(fresh).catch((err) =>
-        log.error('Failed to wake container after update_task notification', { err }),
-      );
+      wakeRunner(fresh).catch((err) => log.error('Failed to wake runner after update_task notification', { err }));
     }
   }
 }

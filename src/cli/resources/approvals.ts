@@ -5,7 +5,7 @@ registerResource({
   plural: 'approvals',
   table: 'pending_approvals',
   description:
-    'Pending approval — in-flight approval cards waiting for an admin response. Created by requestApproval() (self-mod install_packages/add_mcp_server) and OneCLI credential approval flow. Rows are deleted after the admin approves/rejects or the request expires.',
+    'Pending approval — in-flight approval cards waiting for an admin response. Created by requestApproval() and OneCLI credential approval flow. Rows are deleted after the admin approves/rejects or the request expires.',
   idColumn: 'approval_id',
   columns: [
     {

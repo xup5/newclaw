@@ -6,8 +6,8 @@ import { getDb, hasTable } from './connection.js';
 export function createSession(session: Session): void {
   getDb()
     .prepare(
-      `INSERT INTO sessions (id, agent_group_id, messaging_group_id, thread_id, agent_provider, status, container_status, last_active, created_at)
-       VALUES (@id, @agent_group_id, @messaging_group_id, @thread_id, @agent_provider, @status, @container_status, @last_active, @created_at)`,
+      `INSERT INTO sessions (id, agent_group_id, messaging_group_id, thread_id, status, runner_status, last_active, created_at)
+       VALUES (@id, @agent_group_id, @messaging_group_id, @thread_id, @status, @runner_status, @last_active, @created_at)`,
     )
     .run(session);
 }
@@ -31,7 +31,7 @@ export function findSession(messagingGroupId: string, threadId: string | null): 
  * Session lookup scoped to a specific agent group. Needed when multiple
  * agents are wired to the same messaging group + thread (fan-out) — the
  * plain `findSession` would return whichever agent's session happened to
- * be first and route to the wrong container.
+ * be first and route to the wrong runner.
  */
 export function findSessionForAgent(
   agentGroupId: string,
@@ -68,12 +68,12 @@ export function getActiveSessions(): Session[] {
 }
 
 export function getRunningSessions(): Session[] {
-  return getDb().prepare("SELECT * FROM sessions WHERE container_status IN ('running', 'idle')").all() as Session[];
+  return getDb().prepare("SELECT * FROM sessions WHERE runner_status IN ('running', 'idle')").all() as Session[];
 }
 
 export function updateSession(
   id: string,
-  updates: Partial<Pick<Session, 'status' | 'container_status' | 'last_active' | 'agent_provider'>>,
+  updates: Partial<Pick<Session, 'status' | 'runner_status' | 'last_active'>>,
 ): void {
   const fields: string[] = [];
   const values: Record<string, unknown> = { id };
@@ -195,7 +195,7 @@ export function getPendingApprovalsByAction(action: string): PendingApproval[] {
 /**
  * Resolve ask_question render metadata (title + normalized options) for any
  * card, regardless of whether it was persisted as a pending_question (generic
- * ask_user_question) or a pending_approval (self-mod / OneCLI credential).
+ * ask_user_question) or a pending_approval.
  */
 export function getAskQuestionRender(
   id: string,

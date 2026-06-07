@@ -2,7 +2,7 @@
  * SQL operations on per-session inbound/outbound DBs.
  *
  * These are NOT the central app DB — they're the cross-mount SQLite files
- * shared between host and container. Callers own the connection lifecycle
+ * shared between host and runner. Callers own the connection lifecycle
  * (open-write-close per op). See session-manager.ts header for invariants.
  */
 import Database from 'better-sqlite3';
@@ -32,7 +32,7 @@ export function openOutboundDb(dbPath: string): Database.Database {
   return db;
 }
 
-/** Open the outbound DB for a session with write access. Only safe to call when no container is running. */
+/** Open the outbound DB for a session with write access. Only safe to call when no runner is running. */
 export function openOutboundDbRw(dbPath: string): Database.Database {
   const db = new Database(dbPath);
   db.pragma('journal_mode = DELETE');
@@ -105,7 +105,7 @@ export function insertMessage(
     recurrence: string | null;
     /**
      * 1 = wake the agent (default); 0 = accumulate as context only.
-     * Host countDueMessages gates on this; container reads everything.
+     * Host countDueMessages gates on this; runner reads everything.
      */
     trigger?: 0 | 1;
     /**
@@ -115,8 +115,8 @@ export function insertMessage(
      */
     sourceSessionId?: string | null;
     /**
-     * 1 = only deliver on the container's first poll (fresh start).
-     * Dying containers (past first poll) skip these rows.
+     * 1 = only deliver on the runner's first poll (fresh start).
+     * Dying runners (past first poll) skip these rows.
      */
     onWake?: 0 | 1;
   },
@@ -203,37 +203,37 @@ export function getProcessingClaims(outDb: Database.Database): ProcessingClaim[]
 
 /**
  * Delete orphan 'processing' rows. Called by the host after killing a
- * container so the leftover claim doesn't trip claim-stuck on the next sweep
- * tick (which would kill the freshly respawned container before its
+ * runner so the leftover claim doesn't trip claim-stuck on the next sweep
+ * tick (which would kill the freshly respawned runner before its
  * agent-runner can run its own startup cleanup).
  *
- * Safe because the host only writes to outbound.db when no container is
+ * Safe because the host only writes to outbound.db when no runner is
  * running (we just killed it). Returns the number of rows deleted.
  */
 export function deleteOrphanProcessingClaims(outDb: Database.Database): number {
   return outDb.prepare("DELETE FROM processing_ack WHERE status = 'processing'").run().changes;
 }
 
-export interface ContainerState {
+export interface RunnerState {
   current_tool: string | null;
   tool_declared_timeout_ms: number | null;
   tool_started_at: string | null;
 }
 
 /**
- * Read the container's current tool-in-flight state, if any. Returns null
+ * Read the runner's current tool-in-flight state, if any. Returns null
  * when either the table doesn't exist yet (older session DB) or no tool is
  * active. Host sweep reads this to widen stuck-detection tolerance while
  * Bash is running with a long declared timeout.
  */
-export function getContainerState(outDb: Database.Database): ContainerState | null {
+export function getRunnerState(outDb: Database.Database): RunnerState | null {
   try {
     const row = outDb
       .prepare(
         `SELECT current_tool, tool_declared_timeout_ms, tool_started_at
-           FROM container_state WHERE id = 1`,
+           FROM runner_state WHERE id = 1`,
       )
-      .get() as ContainerState | undefined;
+      .get() as RunnerState | undefined;
     return row ?? null;
   } catch {
     // Table not present on older session DBs — treat as "no tool in flight".
@@ -325,7 +325,7 @@ export function migrateMessagesInTable(db: Database.Database): void {
     db.prepare('ALTER TABLE messages_in ADD COLUMN source_session_id TEXT').run();
   }
   if (!cols.has('on_wake')) {
-    // 1 = only deliver on the container's first poll (fresh start).
+    // 1 = only deliver on the runner's first poll (fresh start).
     // All existing rows are normal messages, so default 0.
     db.prepare('ALTER TABLE messages_in ADD COLUMN on_wake INTEGER NOT NULL DEFAULT 0').run();
   }
@@ -348,7 +348,7 @@ export function getInboundSourceSessionId(db: Database.Database, messageId: stri
  * Find the source_session_id of the most recent a2a inbound row from a
  * specific peer (by agent group id). Used as a peer-affinity fallback in
  * a2a routing when an outbound reply has no `in_reply_to` (e.g. the
- * container's send_message MCP tool path didn't thread the batch's
+ * runner's send_message MCP tool path didn't thread the batch's
  * in_reply_to through).
  *
  * Heuristic: "the last time this peer talked to me, which session was it?"

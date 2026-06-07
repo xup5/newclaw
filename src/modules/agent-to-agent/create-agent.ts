@@ -3,14 +3,14 @@
  *
  * Spawns a new agent group on demand from the parent agent, wires bidirectional
  * agent_destinations rows, projects the new destination into the parent's
- * running container, and notifies the parent.
+ * running runner, and notifies the parent.
  */
 import path from 'path';
 
 import { GROUPS_DIR } from '../../config.js';
 import { createAgentGroup, getAgentGroup, getAgentGroupByFolder } from '../../db/agent-groups.js';
 import { getSession } from '../../db/sessions.js';
-import { wakeContainer } from '../../container-runner.js';
+import { wakeRunner } from '../../runner-manager.js';
 import { initGroupFilesystem } from '../../group-init.js';
 import { log } from '../../log.js';
 import { writeSessionMessage } from '../../session-manager.js';
@@ -30,7 +30,7 @@ function notifyAgent(session: Session, text: string): void {
   });
   const fresh = getSession(session.id);
   if (fresh) {
-    wakeContainer(fresh).catch((err) => log.error('Failed to wake container after notification', { err }));
+    wakeRunner(fresh).catch((err) => log.error('Failed to wake runner after notification', { err }));
   }
 }
 
@@ -78,7 +78,6 @@ export async function handleCreateAgent(content: Record<string, unknown>, sessio
     id: agentGroupId,
     name,
     folder,
-    agent_provider: null,
     created_at: now,
   };
   createAgentGroup(newGroup);
@@ -109,7 +108,7 @@ export async function handleCreateAgent(content: Record<string, unknown>, sessio
     created_at: now,
   });
 
-  // REQUIRED: project the new destination into the running container's
+  // REQUIRED: project the new destination into the running runner's
   // inbound.db. See the top-of-file invariant in db/agent-destinations.ts
   // — forgetting this causes "dropped: unknown destination" when the parent
   // tries to send to the newly-created child.

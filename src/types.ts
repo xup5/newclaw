@@ -4,28 +4,23 @@ export interface AgentGroup {
   id: string;
   name: string;
   folder: string;
-  /** @deprecated Use container_configs.provider instead. */
-  agent_provider: string | null;
   created_at: string;
 }
 
-/** Per-agent-group container runtime config. Source of truth in the DB;
- *  materialized to `groups/<folder>/container.json` at spawn time. */
-export interface ContainerConfigRow {
+/** Per-agent-group runtime config. Source of truth in the DB;
+ *  materialized to `groups/<folder>/agent.json` when a runner starts. */
+export interface AgentConfigRow {
   agent_group_id: string;
   provider: string | null;
   model: string | null;
   effort: string | null;
-  image_tag: string | null;
   assistant_name: string | null;
   max_messages_per_prompt: number | null;
   skills: string; // JSON: '"all"' | '["skill1","skill2"]'
   mcp_servers: string; // JSON: Record<string, McpServerConfig>
-  packages_apt: string; // JSON: string[]
   packages_npm: string; // JSON: string[]
-  additional_mounts: string; // JSON: AdditionalMountConfig[]
+  host_paths: string; // JSON: HostPathConfig[]
   cli_scope: string; // 'disabled' | 'group' | 'global'
-  runtime: string; // 'host' | 'docker'
   updated_at: string;
 }
 
@@ -125,9 +120,8 @@ export interface Session {
   agent_group_id: string;
   messaging_group_id: string | null;
   thread_id: string | null;
-  agent_provider: string | null;
   status: 'active' | 'closed';
-  container_status: 'running' | 'idle' | 'stopped';
+  runner_status: 'running' | 'idle' | 'stopped';
   last_active: string | null;
   created_at: string;
 }

@@ -4,7 +4,7 @@ import type { Migration } from './index.js';
 export const migration016: Migration = {
   version: 16,
   name: 'runner-runtime',
-  up(db: Database.Database) {
-    db.prepare("ALTER TABLE container_configs ADD COLUMN runtime TEXT NOT NULL DEFAULT 'host'").run();
+  up(_db: Database.Database) {
+    // Host-native runners are the only runtime.
   },
 };

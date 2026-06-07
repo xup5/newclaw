@@ -158,9 +158,9 @@ export function createMessagingGroupAgent(mga: MessagingGroupAgent): void {
   // is fine because the only real callers are one-shot setup scripts
   // (setup/register.ts, scripts/init-first-agent.ts, /manage-channels
   // skill) that run in a separate process from the host. Any already-
-  // running container for `mga.agent_group_id` will keep serving the
+  // running runner for `mga.agent_group_id` will keep serving the
   // stale projection until its next wake (idle timeout or next inbound
-  // message) at which point spawnContainer's writeDestinations call
+  // message) at which point spawnRunner's writeDestinations call
   // refreshes from central. If you call this from code that runs INSIDE
   // the host process and need the refresh to happen immediately,
   // explicitly call the module's `writeDestinations(mga.agent_group_id,

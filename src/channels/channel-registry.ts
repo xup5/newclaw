@@ -41,9 +41,9 @@ export function getRegisteredChannelNames(): string[] {
   return [...registry.keys()];
 }
 
-/** Get container config for a channel (used by container-runner for additional mounts/env). */
-export function getChannelContainerConfig(name: string): ChannelRegistration['containerConfig'] {
-  return registry.get(name)?.containerConfig;
+/** Get host config for a channel. */
+export function getChannelHostConfig(name: string): ChannelRegistration['hostConfig'] {
+  return registry.get(name)?.hostConfig;
 }
 
 /**

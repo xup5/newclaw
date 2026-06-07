@@ -1,6 +1,6 @@
 /**
  * SocketTransport — client side. Used by the `ncl` binary when running on
- * the host (i.e. invoked from a shell or by Claude in the project).
+ * the host (i.e. invoked from a shell or by Codex in the project).
  *
  * Wire format: line-delimited JSON. One request per connection; the server
  * writes one response and closes.
