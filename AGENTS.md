@@ -1,6 +1,6 @@
-# NewClaw
+# AnotherClaw
 
-NewClaw is a host-native personal agent router. The service is a single Node
+AnotherClaw is a host-native personal agent router. The service is a single Node
 host process that receives channel messages, writes them to per-session SQLite
 queues, wakes a local runner process, and delivers replies back through the
 same channel adapter.

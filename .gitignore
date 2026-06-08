@@ -34,6 +34,6 @@ groups/*/agent.json
 .vscode/
 
 # Skills system (local per-installation state)
-.newclaw/
+.anotherclaw/
 
 agents-sdk-docs

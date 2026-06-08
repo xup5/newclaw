@@ -1,6 +1,6 @@
-# NewClaw
+# AnotherClaw
 
-NewClaw is a host-native personal agent router. It receives messages from chat
+AnotherClaw is a host-native personal agent router. It receives messages from chat
 channels, stores them in per-session SQLite files, wakes a local agent runner,
 and delivers the runner's replies back through the originating channel.
 

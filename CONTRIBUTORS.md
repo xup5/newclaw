@@ -1,6 +1,6 @@
 # Contributors
 
-Thanks to everyone who has contributed to NewClaw!
+Thanks to everyone who has contributed to AnotherClaw!
 
 - [Alakazam03](https://github.com/Alakazam03) — Vaibhav Aggarwal
 - [tydev-new](https://github.com/tydev-new)

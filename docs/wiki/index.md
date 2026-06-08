@@ -1,4 +1,4 @@
-# NewClaw Wiki
+# AnotherClaw Wiki
 
 ## Pages
 
@@ -10,7 +10,7 @@
 
 ## Design Summary
 
-NewClaw is a single Node host plus short-lived host-native runner processes.
+AnotherClaw is a single Node host plus short-lived host-native runner processes.
 The host owns channel adapters, routing, central state, delivery, approvals, and
 sweep/retry logic. A runner owns one session turn: it reads pending inbound
 messages, calls the selected provider, writes outbound replies, and exits.

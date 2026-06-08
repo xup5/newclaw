@@ -1,5 +1,5 @@
 /**
- * NewClaw — main entry point.
+ * AnotherClaw — main entry point.
  *
  * Thin orchestrator: init DB, run migrations, start channel adapters,
  * start delivery polls, start sweep, handle shutdown.
@@ -61,7 +61,7 @@ import type { ChannelAdapter, ChannelSetup } from './channels/adapter.js';
 import { initChannelAdapters, teardownChannelAdapters, getChannelAdapter } from './channels/channel-registry.js';
 
 async function main(): Promise<void> {
-  log.info('NewClaw starting');
+  log.info('AnotherClaw starting');
 
   // 0. Circuit breaker — backoff on rapid restarts
   await enforceStartupBackoff();
@@ -166,7 +166,7 @@ async function main(): Promise<void> {
   // 6. Start the `ncl` CLI socket server (data/ncl.sock).
   await startCliServer();
 
-  log.info('NewClaw running');
+  log.info('AnotherClaw running');
 }
 
 /** Graceful shutdown. */

@@ -12,11 +12,11 @@ let inbound: Database.Database;
 let outbound: Database.Database;
 
 export function openRunnerDbs(): void {
-  if (!process.env.NEWCLAW_INBOUND_DB || !process.env.NEWCLAW_OUTBOUND_DB) {
-    throw new Error('NEWCLAW_INBOUND_DB and NEWCLAW_OUTBOUND_DB are required');
+  if (!process.env.ANOTHERCLAW_INBOUND_DB || !process.env.ANOTHERCLAW_OUTBOUND_DB) {
+    throw new Error('ANOTHERCLAW_INBOUND_DB and ANOTHERCLAW_OUTBOUND_DB are required');
   }
-  inbound = new Database(process.env.NEWCLAW_INBOUND_DB, { readonly: true });
-  outbound = new Database(process.env.NEWCLAW_OUTBOUND_DB);
+  inbound = new Database(process.env.ANOTHERCLAW_INBOUND_DB, { readonly: true });
+  outbound = new Database(process.env.ANOTHERCLAW_OUTBOUND_DB);
   outbound.pragma('journal_mode = DELETE');
   outbound.pragma('busy_timeout = 5000');
 }
@@ -76,7 +76,7 @@ export function writeTextReply(inReplyTo: string, text: string): void {
 }
 
 export function touchHeartbeat(): void {
-  const heartbeat = process.env.NEWCLAW_HEARTBEAT_PATH;
+  const heartbeat = process.env.ANOTHERCLAW_HEARTBEAT_PATH;
   if (!heartbeat) return;
   fs.closeSync(fs.openSync(heartbeat, 'a'));
   fs.utimesSync(heartbeat, new Date(), new Date());

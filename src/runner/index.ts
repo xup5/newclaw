@@ -6,19 +6,19 @@ async function main(): Promise<void> {
   openRunnerDbs();
   touchHeartbeat();
 
-  const limit = Math.max(1, Number(process.env.NEWCLAW_MAX_MESSAGES_PER_PROMPT) || 10);
+  const limit = Math.max(1, Number(process.env.ANOTHERCLAW_MAX_MESSAGES_PER_PROMPT) || 10);
   const messages = getPendingMessages(limit);
   if (messages.length === 0) return;
 
   for (const message of messages) markProcessing(message.id);
 
   try {
-    const provider = getProvider(process.env.NEWCLAW_PROVIDER || 'codex');
+    const provider = getProvider(process.env.ANOTHERCLAW_PROVIDER || 'codex');
     const text = await provider.run({
       prompt: buildPrompt(messages),
-      cwd: process.env.NEWCLAW_AGENT_DIR || process.cwd(),
-      model: process.env.NEWCLAW_MODEL || undefined,
-      effort: process.env.NEWCLAW_EFFORT || undefined,
+      cwd: process.env.ANOTHERCLAW_AGENT_DIR || process.cwd(),
+      model: process.env.ANOTHERCLAW_MODEL || undefined,
+      effort: process.env.ANOTHERCLAW_EFFORT || undefined,
     });
     writeTextReply(messages[messages.length - 1].id, text || '(no response)');
     for (const message of messages) markDone(message.id, 'completed');

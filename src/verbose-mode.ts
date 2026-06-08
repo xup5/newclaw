@@ -44,7 +44,7 @@ export function setVerboseModeForPlatform(
 ): VerboseCommandResponse {
   const group = getAgentGroupForPlatform(channelType, platformId);
   if (!group) {
-    return { ok: false, message: 'This Discord channel or thread is not registered with NewClaw yet.' };
+    return { ok: false, message: 'This Discord channel or thread is not registered with AnotherClaw yet.' };
   }
 
   const flagPath = path.join(process.cwd(), 'groups', group.folder, '.verbose');

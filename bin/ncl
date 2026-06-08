@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# ncl — NewClaw CLI launcher.
+# ncl — AnotherClaw CLI launcher.
 #
 # Resolves the project root from this script's location, cd's there so the
 # host-resolved DATA_DIR matches the running host, and execs the TS entry

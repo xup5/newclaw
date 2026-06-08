@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.newclaw</string>
+    <string>com.anotherclaw</string>
     <key>ProgramArguments</key>
     <array>
         <string>{{NODE_PATH}}</string>
@@ -25,8 +25,8 @@
         <string>Andy</string>
     </dict>
     <key>StandardOutPath</key>
-    <string>{{PROJECT_ROOT}}/logs/newclaw.log</string>
+    <string>{{PROJECT_ROOT}}/logs/anotherclaw.log</string>
     <key>StandardErrorPath</key>
-    <string>{{PROJECT_ROOT}}/logs/newclaw.error.log</string>
+    <string>{{PROJECT_ROOT}}/logs/anotherclaw.error.log</string>
 </dict>
 </plist>

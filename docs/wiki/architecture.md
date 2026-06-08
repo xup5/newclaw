@@ -67,6 +67,6 @@ needs a live process handle to know whether a message was claimed or completed.
 
 ## Security Model
 
-NewClaw is host-native. There is no per-agent isolation layer. Agent groups are
+AnotherClaw is host-native. There is no per-agent isolation layer. Agent groups are
 coordination boundaries for routing, memory, and configuration, not security
-boundaries. Run NewClaw only on a host you intend the agent to control.
+boundaries. Run AnotherClaw only on a host you intend the agent to control.

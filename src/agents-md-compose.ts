@@ -62,9 +62,9 @@ function baseInstructions(group: AgentGroup): string {
   return [
     `# ${group.name}`,
     '',
-    'You are a host-native coding agent managed by NewClaw.',
+    'You are a host-native coding agent managed by AnotherClaw.',
     'You run directly on the user-owned host and may read or write the host filesystem according to normal OS permissions.',
-    'Use the session databases only for NewClaw message traffic; use ordinary files and tools for project work.',
+    'Use the session databases only for AnotherClaw message traffic; use ordinary files and tools for project work.',
   ].join('\n');
 }
 

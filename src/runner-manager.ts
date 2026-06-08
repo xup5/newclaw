@@ -73,7 +73,7 @@ async function spawnRunner(session: Session): Promise<void> {
 
   const config = prepareRunnerFilesystem(agentGroup);
   const provider = resolveProviderName(config.provider);
-  const runnerName = `newclaw-${agentGroup.folder}-${Date.now()}`;
+  const runnerName = `anotherclaw-${agentGroup.folder}-${Date.now()}`;
   const spec = buildRunnerSpec(session, agentGroup, config, provider);
 
   fs.rmSync(heartbeatPath(agentGroup.id, session.id), { force: true });
@@ -163,18 +163,18 @@ function buildRunnerSpec(
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     TZ: TIMEZONE,
-    NEWCLAW_PROVIDER: provider,
-    NEWCLAW_MODEL: config.model,
-    NEWCLAW_EFFORT: config.effort,
-    NEWCLAW_MAX_MESSAGES_PER_PROMPT: String(config.maxMessagesPerPrompt ?? ''),
-    NEWCLAW_SESSION_DIR: sessDir,
-    NEWCLAW_AGENT_DIR: groupDir,
-    NEWCLAW_GLOBAL_DIR: path.join(GROUPS_DIR, 'global'),
-    NEWCLAW_AGENT_CONFIG_PATH: path.join(groupDir, 'agent.json'),
-    NEWCLAW_INBOUND_DB: path.join(sessDir, 'inbound.db'),
-    NEWCLAW_OUTBOUND_DB: path.join(sessDir, 'outbound.db'),
-    NEWCLAW_HEARTBEAT_PATH: heartbeatPath(agentGroup.id, session.id),
-    NEWCLAW_OUTBOX_DIR: path.join(sessDir, 'outbox'),
+    ANOTHERCLAW_PROVIDER: provider,
+    ANOTHERCLAW_MODEL: config.model,
+    ANOTHERCLAW_EFFORT: config.effort,
+    ANOTHERCLAW_MAX_MESSAGES_PER_PROMPT: String(config.maxMessagesPerPrompt ?? ''),
+    ANOTHERCLAW_SESSION_DIR: sessDir,
+    ANOTHERCLAW_AGENT_DIR: groupDir,
+    ANOTHERCLAW_GLOBAL_DIR: path.join(GROUPS_DIR, 'global'),
+    ANOTHERCLAW_AGENT_CONFIG_PATH: path.join(groupDir, 'agent.json'),
+    ANOTHERCLAW_INBOUND_DB: path.join(sessDir, 'inbound.db'),
+    ANOTHERCLAW_OUTBOUND_DB: path.join(sessDir, 'outbound.db'),
+    ANOTHERCLAW_HEARTBEAT_PATH: heartbeatPath(agentGroup.id, session.id),
+    ANOTHERCLAW_OUTBOX_DIR: path.join(sessDir, 'outbox'),
   };
 
   return {

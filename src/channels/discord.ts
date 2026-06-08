@@ -52,7 +52,7 @@ async function registerDiscordCommands(botToken: string, applicationId?: string)
 
   const verbose = new SlashCommandBuilder()
     .setName('verbose')
-    .setDescription('Control NewClaw progress narration for this channel')
+    .setDescription('Control AnotherClaw progress narration for this channel')
     .addStringOption((option) =>
       option
         .setName('mode')
@@ -119,16 +119,16 @@ async function handleCodexCommand(ctx: {
 }): Promise<{ text: string; ephemeral: true }> {
   const mg = getMessagingGroupByPlatform('discord', ctx.platformId);
   if (!mg) {
-    return { text: 'This Discord channel or thread is not registered with NewClaw yet.', ephemeral: true };
+    return { text: 'This Discord channel or thread is not registered with AnotherClaw yet.', ephemeral: true };
   }
 
   const wiring = getMessagingGroupAgents(mg.id)[0];
   if (!wiring) {
-    return { text: 'This Discord channel is registered but has no NewClaw agent wired to it.', ephemeral: true };
+    return { text: 'This Discord channel is registered but has no AnotherClaw agent wired to it.', ephemeral: true };
   }
 
   if (!isDiscordAdmin(ctx.userId, wiring.agent_group_id)) {
-    return { text: 'Only NewClaw owners and admins can change Codex settings for this agent.', ephemeral: true };
+    return { text: 'Only AnotherClaw owners and admins can change Codex settings for this agent.', ephemeral: true };
   }
 
   const config = getAgentConfig(wiring.agent_group_id);

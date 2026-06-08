@@ -14,8 +14,8 @@ export const ASSISTANT_HAS_OWN_NUMBER =
 const PROJECT_ROOT = process.cwd();
 const HOME_DIR = process.env.HOME || os.homedir();
 
-export const MOUNT_ALLOWLIST_PATH = path.join(HOME_DIR, '.config', 'newclaw', 'mount-allowlist.json');
-export const SENDER_ALLOWLIST_PATH = path.join(HOME_DIR, '.config', 'newclaw', 'sender-allowlist.json');
+export const MOUNT_ALLOWLIST_PATH = path.join(HOME_DIR, '.config', 'anotherclaw', 'mount-allowlist.json');
+export const SENDER_ALLOWLIST_PATH = path.join(HOME_DIR, '.config', 'anotherclaw', 'sender-allowlist.json');
 export const STORE_DIR = path.resolve(PROJECT_ROOT, 'store');
 export const GROUPS_DIR = path.resolve(PROJECT_ROOT, 'groups');
 export const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
