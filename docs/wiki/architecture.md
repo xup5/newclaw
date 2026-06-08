@@ -65,6 +65,13 @@ needs a live process handle to know whether a message was claimed or completed.
 6. Runner writes one outbound chat reply.
 7. Runner marks messages completed or failed and exits.
 
+## Skills
+
+Skills are stored as committed Markdown files under `skills/<name>/SKILL.md`.
+`agent_configs.skills` selects either `"all"` or a list of skill names. On runner
+wake, `src/agents-md-compose.ts` injects selected skill instructions into the
+generated `AGENTS.md`, so the provider sees them as part of the prompt.
+
 ## Security Model
 
 AnotherClaw is host-native. There is no per-agent isolation layer. Agent groups are

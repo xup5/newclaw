@@ -6,8 +6,7 @@
  * etc.). Core runs with an empty barrel — the registries have inline
  * fallbacks and `sqlite_master` guards.
  *
- * Registry-based modules (installed via /add-<name> skills, pulled from the
- * `modules` branch): append imports below.
+ * Registry-based modules self-register by being imported here.
  */
 import './approvals/index.js';
 import './interactive/index.js';

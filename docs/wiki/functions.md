@@ -68,6 +68,12 @@
   `groups/<folder>/agent.json`.
 - `composeGroupAgentsMd()` in `src/agents-md-compose.ts`: writes
   `groups/<folder>/AGENTS.md`.
+- `listAvailableSkills()` in `src/skills.ts`: reads bundled skill directories
+  and parses `SKILL.md` frontmatter.
+- `loadSelectedSkills()` in `src/skills.ts`: returns all skills or the named
+  subset requested by `agent_configs.skills`.
+- `parseSkillSelection()` in `src/skills.ts`: validates the DB representation
+  for skill selection.
 - `migrateGroupsToAgentsLocal()` in `src/agents-md-compose.ts`: one-time rename
   from old local memory filenames when present.
 - `initGroupFilesystem()` in `src/group-init.ts`: ensures group workspace,

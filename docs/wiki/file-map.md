@@ -19,8 +19,10 @@
 
 - `src/agent-config.ts`: typed agent config and `agent.json` materialization.
 - `src/db/agent-configs.ts`: CRUD for the `agent_configs` table.
-- `src/agents-md-compose.ts`: composes `groups/<folder>/AGENTS.md` from base instructions, group memory, and MCP instructions.
+- `src/agents-md-compose.ts`: composes `groups/<folder>/AGENTS.md` from base instructions, group memory, skills, and MCP instructions.
+- `src/skills.ts`: discovers bundled `skills/<name>/SKILL.md` files and resolves `agent_configs.skills` selection.
 - `src/group-init.ts`: initializes `groups/<folder>/AGENTS.local.md` and config rows.
+- `skills/*/SKILL.md`: bundled instruction skills injected into composed `AGENTS.md`.
 
 ## Databases
 

@@ -4,6 +4,7 @@ import { getSessionsByAgentGroup, getSession } from '../../db/sessions.js';
 import { getAgentConfig, updateAgentConfigJson, updateAgentConfigScalars } from '../../db/agent-configs.js';
 import { killRunner, wakeRunner } from '../../runner-manager.js';
 import { writeSessionMessage } from '../../session-manager.js';
+import { listAvailableSkills, parseSkillSelection } from '../../skills.js';
 import type { AgentConfigRow } from '../../types.js';
 import { registerResource } from '../crud.js';
 
@@ -185,6 +186,33 @@ registerResource({
         return presentConfig(getAgentConfig(id)!);
       },
     },
+    'config list-skills': {
+      access: 'open',
+      description: 'List bundled skills available to agent groups.',
+      handler: async () => {
+        return listAvailableSkills().map((skill) => ({
+          name: skill.name,
+          description: skill.description ?? '',
+          file: skill.filePath,
+        }));
+      },
+    },
+    'config set-skills': {
+      access: 'approval',
+      description:
+        'Set skills for a group. Use --id <group-id> --skills all, --skills \'["discord"]\', or --skills discord,welcome.',
+      handler: async (args) => {
+        const id = args.id as string;
+        const rawSkills = args.skills as string;
+        if (!id || !rawSkills) throw new Error('--id and --skills are required');
+        const row = getAgentConfig(id);
+        if (!row) throw new Error(`No agent config for group: ${id}`);
+
+        const skills = parseSkillsArg(rawSkills);
+        updateAgentConfigJson(id, 'skills', skills);
+        return { agent_group_id: id, skills };
+      },
+    },
     'config add-mcp-server': {
       access: 'approval',
       description:
@@ -224,6 +252,16 @@ registerResource({
     },
   },
 });
+
+function parseSkillsArg(raw: string): 'all' | string[] {
+  const trimmed = raw.trim();
+  if (trimmed === 'all') return 'all';
+  if (trimmed.startsWith('[')) return parseSkillSelection(JSON.parse(trimmed));
+  return trimmed
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
 
 function writeWakeMessage(agentGroupId: string, sessionId: string, text: string): void {
   writeSessionMessage(agentGroupId, sessionId, {

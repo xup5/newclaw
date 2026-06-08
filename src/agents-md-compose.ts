@@ -5,6 +5,7 @@ import { GROUPS_DIR } from './config.js';
 import { mergeMcpServers, type McpServerConfig } from './agent-config.js';
 import { getAgentConfig } from './db/agent-configs.js';
 import { log } from './log.js';
+import { loadSelectedSkills, parseSkillSelection } from './skills.js';
 import type { AgentGroup } from './types.js';
 
 const COMPOSED_HEADER = '<!-- Composed at runner start. Edit AGENTS.local.md for group-specific memory. -->';
@@ -28,6 +29,11 @@ export function composeGroupAgentsMd(group: AgentGroup): void {
     parts.push('## Group Memory', local);
   }
 
+  const skills = loadSelectedSkills(configRow ? parseSkillSelection(JSON.parse(configRow.skills) as unknown) : 'all');
+  if (skills.length > 0) {
+    parts.push('## Skills', skills.map(renderSkill).join('\n\n'));
+  }
+
   const mcpInstructions = Object.entries(mcpServers)
     .filter(([, mcp]) => mcp.instructions)
     .map(([name, mcp]) => `### ${name}\n${mcp.instructions}`);
@@ -36,6 +42,13 @@ export function composeGroupAgentsMd(group: AgentGroup): void {
   }
 
   writeAtomic(path.join(groupDir, 'AGENTS.md'), parts.join('\n\n') + '\n');
+}
+
+function renderSkill(skill: { name: string; description?: string; body: string }): string {
+  const lines = [`### ${skill.name}`];
+  if (skill.description) lines.push('', skill.description);
+  lines.push('', skill.body);
+  return lines.join('\n');
 }
 
 export function migrateGroupsToAgentsLocal(): void {

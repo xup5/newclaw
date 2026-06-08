@@ -7,6 +7,7 @@
 - [Function Reference](functions.md)
 - [Data Flow](data-flow.md)
 - [Operations](operations.md)
+- [Skills](skills.md)
 
 ## Design Summary
 

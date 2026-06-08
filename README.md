@@ -41,6 +41,8 @@ ncl groups config update --id <group-id> --provider gpt --model gpt-5
 - `sessions`: a conversation runtime keyed by agent group, messaging group, and thread.
 - `inbound.db`: host-owned message queue for runner input.
 - `outbound.db`: runner-owned queue for replies and processing acknowledgments.
+- `skills/<name>/SKILL.md`: bundled prompt instruction skills injected into
+  generated group `AGENTS.md` files according to `agent_configs.skills`.
 
 ## Documentation
 
