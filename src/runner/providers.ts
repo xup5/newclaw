@@ -31,7 +31,15 @@ registerProvider({
   name: 'codex',
   async run(input) {
     const outputPath = path.join(os.tmpdir(), `anotherclaw-codex-${process.pid}-${Date.now()}.txt`);
-    const args = ['exec', '--skip-git-repo-check', '--color', 'never', '--output-last-message', outputPath];
+    const args = [
+      'exec',
+      '--skip-git-repo-check',
+      '--dangerously-bypass-approvals-and-sandbox',
+      '--color',
+      'never',
+      '--output-last-message',
+      outputPath,
+    ];
     if (input.model) args.push('--model', input.model);
     args.push('-');
 
