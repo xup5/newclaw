@@ -11,7 +11,7 @@ flowchart TB
     Delivery[src/delivery.ts]
     Sweep[src/host-sweep.ts]
     Manager[src/runner-manager.ts]
-    Central[(data/v2.db)]
+    Central[(data/anotherclaw.db)]
   end
 
   subgraph Session
@@ -35,7 +35,7 @@ flowchart TB
 
 ## Central DB
 
-`data/v2.db` stores durable host-level state:
+`data/anotherclaw.db` stores durable host-level state:
 
 - users and roles
 - agent groups

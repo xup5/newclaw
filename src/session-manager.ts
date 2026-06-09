@@ -45,7 +45,7 @@ function isPathInside(parent: string, child: string): boolean {
 
 /** Root directory for all session data. */
 export function sessionsBaseDir(): string {
-  return path.join(DATA_DIR, 'v2-sessions');
+  return path.join(DATA_DIR, 'sessions');
 }
 
 /** Directory for a specific session: sessions/{agent_group_id}/{session_id}/ */

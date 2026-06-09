@@ -39,7 +39,7 @@ ncl groups restart --id <group-id>
 Session files live under:
 
 ```text
-data/v2-sessions/<agent-group-id>/<session-id>/
+data/sessions/<agent-group-id>/<session-id>/
   inbound.db
   outbound.db
   outbox/
@@ -49,7 +49,7 @@ data/v2-sessions/<agent-group-id>/<session-id>/
 Use the project query helper for ad-hoc DB inspection:
 
 ```bash
-pnpm exec tsx scripts/q.ts data/v2.db "select id,name from agent_groups"
+pnpm exec tsx scripts/q.ts data/anotherclaw.db "select id,name from agent_groups"
 ```
 
 ## Add A Provider

@@ -135,7 +135,7 @@ function prepareRunnerFilesystem(agentGroup: AgentGroup): AgentConfig {
   initGroupFilesystem(agentGroup);
   const config = materializeAgentConfig(agentGroup.id);
   composeGroupAgentsMd(agentGroup);
-  fs.mkdirSync(path.join(DATA_DIR, 'v2-sessions', agentGroup.id), { recursive: true });
+  fs.mkdirSync(path.join(DATA_DIR, 'sessions', agentGroup.id), { recursive: true });
   return config;
 }
 

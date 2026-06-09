@@ -67,7 +67,7 @@ async function main(): Promise<void> {
   await enforceStartupBackoff();
 
   // 1. Init central DB
-  const dbPath = path.join(DATA_DIR, 'v2.db');
+  const dbPath = path.join(DATA_DIR, 'anotherclaw.db');
   const db = initDb(dbPath);
   runMigrations(db);
   log.info('Central DB ready', { path: dbPath });
