@@ -1,7 +1,7 @@
-import { execFile } from 'child_process';
-import { promisify } from 'util';
-
-const execFileAsync = promisify(execFile);
+import { spawn } from 'child_process';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 export interface ProviderInput {
   prompt: string;
@@ -30,18 +30,53 @@ export function getProvider(name: string): AgentProvider {
 registerProvider({
   name: 'codex',
   async run(input) {
-    const args = ['exec', '--skip-git-repo-check'];
+    const outputPath = path.join(os.tmpdir(), `anotherclaw-codex-${process.pid}-${Date.now()}.txt`);
+    const args = ['exec', '--skip-git-repo-check', '--color', 'never', '--output-last-message', outputPath];
     if (input.model) args.push('--model', input.model);
-    args.push(input.prompt);
-    const { stdout } = await execFileAsync('codex', args, {
-      cwd: input.cwd,
-      maxBuffer: 20 * 1024 * 1024,
-      env: process.env,
-      encoding: 'utf8',
-    });
-    return String(stdout).trim();
+    args.push('-');
+
+    try {
+      await runCodex(args, input.cwd, input.prompt);
+      return fs.readFileSync(outputPath, 'utf8').trim();
+    } finally {
+      fs.rmSync(outputPath, { force: true });
+    }
   },
 });
+
+function runCodex(args: string[], cwd: string, prompt: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('codex', args, {
+      cwd,
+      env: process.env,
+      stdio: ['pipe', 'ignore', 'pipe'],
+    });
+    let stderr = '';
+    const timeout = setTimeout(() => {
+      child.kill('SIGTERM');
+      setTimeout(() => child.kill('SIGKILL'), 1500).unref();
+      reject(new Error('Codex timed out after 120 seconds'));
+    }, 120_000);
+
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
+      if (stderr.length > 8000) stderr = stderr.slice(-8000);
+    });
+    child.on('error', (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+    child.on('close', (code) => {
+      clearTimeout(timeout);
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`Codex exited with ${code}: ${stderr.trim()}`));
+      }
+    });
+    child.stdin.end(prompt);
+  });
+}
 
 registerProvider({
   name: 'gpt',

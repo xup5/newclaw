@@ -59,20 +59,36 @@ export function markDone(messageId: string, status: 'completed' | 'failed'): voi
 }
 
 export function writeTextReply(inReplyTo: string, text: string): void {
+  const routing = getSessionRouting();
   outbound
     .prepare(
       `INSERT INTO messages_out (
-        id, seq, in_reply_to, timestamp, kind, content
+        id, seq, in_reply_to, timestamp, kind, platform_id, channel_type, thread_id, content
       ) VALUES (
-        @id, @seq, @in_reply_to, datetime('now'), 'chat', @content
+        @id, @seq, @in_reply_to, datetime('now'), 'chat', @platform_id, @channel_type, @thread_id, @content
       )`,
     )
     .run({
       id: `out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       seq: nextOddSeq(),
       in_reply_to: inReplyTo,
+      platform_id: routing.platform_id,
+      channel_type: routing.channel_type,
+      thread_id: routing.thread_id,
       content: JSON.stringify({ text }),
     });
+}
+
+function getSessionRouting(): { platform_id: string | null; channel_type: string | null; thread_id: string | null } {
+  return (
+    (inbound.prepare('SELECT platform_id, channel_type, thread_id FROM session_routing WHERE id = 1').get() as
+      | { platform_id: string | null; channel_type: string | null; thread_id: string | null }
+      | undefined) ?? {
+      platform_id: null,
+      channel_type: null,
+      thread_id: null,
+    }
+  );
 }
 
 export function touchHeartbeat(): void {

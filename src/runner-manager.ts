@@ -100,6 +100,9 @@ async function spawnRunner(session: Session): Promise<void> {
     markRunnerStopped(session.id);
     stopTypingRefresh(session.id);
     log.info('Runner exited', { sessionId: session.id, code, runnerName });
+    import('./delivery.js')
+      .then(({ deliverSessionMessages }) => deliverSessionMessages(session))
+      .catch((err) => log.error('Failed to deliver runner output after exit', { sessionId: session.id, err }));
   });
 
   child.on('error', (err) => {
